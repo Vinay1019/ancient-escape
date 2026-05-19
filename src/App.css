@@ -722,3 +722,8 @@ button {
   font-weight: 800;
   color: #8a3a16 !important;
 }
+
+.modalButtonRow {
+  justify-content: flex-start;
+  margin-top: 16px;
+}

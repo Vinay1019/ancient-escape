@@ -103,7 +103,7 @@ function possiblePlayerMoves(player, ai, walls) {
 }
 
 function downloadCSV(rows) {
-  const headers = ["participantId", "age", "gender", "difficulty", "mode", "game", "turn", "participantRow", "participantCol", "aiRow", "aiCol", "participantMove", "aiPreview", "aiChosenMove", "risk", "goalDistance", "aiDistance", "reactionTimeMs", "reactionTimeSeconds", "totalElapsedMs", "totalElapsedSeconds", "result", "timestamp"];
+  const headers = ["sessionId", "participantId", "age", "gender", "difficulty", "mode", "game", "turn", "participantRow", "participantCol", "aiRow", "aiCol", "participantMove", "aiPreview", "aiChosenMove", "risk", "goalDistance", "aiDistance", "reactionTimeMs", "reactionTimeSeconds", "totalElapsedMs", "totalElapsedSeconds", "result", "timestamp"];
   const csv = [headers.join(",")]
     .concat(rows.map((row) => headers.map((h) => JSON.stringify(row[h] ?? "")).join(",")))
     .join("\n");
@@ -138,6 +138,7 @@ export default function App() {
   const [turnStartedAt, setTurnStartedAt] = useState(Date.now());
   const [gameStartedAt, setGameStartedAt] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
+  const [sessionId, setSessionId] = useState(() => `AE-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
 
   const settings = DIFFICULTY[difficulty];
   const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
@@ -146,6 +147,25 @@ export default function App() {
   const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
   const currentReactionSeconds = Math.round((now - turnStartedAt) / 1000);
   const totalElapsedSeconds = Math.round((now - gameStartedAt) / 1000);
+
+  useEffect(() => {
+    if (logs.length === 0) return;
+
+    const savedSessions = JSON.parse(localStorage.getItem("ancientEscapeSessions") || "[]");
+    const filteredSessions = savedSessions.filter((session) => session.sessionId !== sessionId);
+    const updatedSession = {
+      sessionId,
+      participantId,
+      age,
+      gender,
+      difficulty,
+      mode,
+      savedAt: new Date().toISOString(),
+      rows: logs,
+    };
+
+    localStorage.setItem("ancientEscapeSessions", JSON.stringify([...filteredSessions, updatedSession]));
+  }, [logs, sessionId, participantId, age, gender, difficulty, mode]);
 
   function resetLevel(nextGame = game) {
     setGame(nextGame);
@@ -160,6 +180,7 @@ export default function App() {
 
   function startSession(selectedMode = "Experiment") {
     setMode(selectedMode);
+    setSessionId(`AE-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
     setLogs([]);
     setWins(0);
     setLosses(0);
@@ -233,6 +254,7 @@ export default function App() {
     if (status === "playing" && turn >= settings.maxTurns) status = "timeout";
 
     const row = {
+      sessionId,
       participantId,
       age,
       gender,
@@ -282,6 +304,25 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [playerOptions, result, screen]);
+
+  function downloadSavedSessions() {
+    const savedSessions = JSON.parse(localStorage.getItem("ancientEscapeSessions") || "[]");
+    const allRows = savedSessions.flatMap((session) => session.rows || []);
+
+    if (allRows.length === 0) {
+      alert("No saved session data found on this device yet.");
+      return;
+    }
+
+    downloadCSV(allRows);
+  }
+
+  function clearSavedSessions() {
+    const confirmClear = window.confirm("Clear all Ancient Escape saved data from this device?");
+    if (!confirmClear) return;
+    localStorage.removeItem("ancientEscapeSessions");
+    alert("Saved data cleared from this device.");
+  }
 
   function sendFeedback() {
     const subject = encodeURIComponent("Ancient Escape Feedback");
@@ -338,6 +379,7 @@ export default function App() {
             <div className="twoButtonRow">
               <button className="menuButton smallMenu" onClick={() => setModal("feedback")}>💬 Feedback</button>
               <button className="menuButton smallMenu" onClick={() => setModal("learn")}>📖 Learn</button>
+              <button className="menuButton smallMenu" onClick={() => setModal("savedData")}>💾 Saved Data</button>
             </div>
           </div>
         </main>
@@ -368,6 +410,15 @@ export default function App() {
                 <p>Difficulty controls wall count, turn limit, and guardian chase strength.</p>
                 <div className="difficultyPills modalPills">
                   {Object.keys(DIFFICULTY).map((d) => <button key={d} className={difficulty === d ? "active" : ""} onClick={() => setDifficulty(d)}>{d}</button>)}
+                </div>
+              </>}
+              {modal === "savedData" && <>
+                <h2>Saved Data</h2>
+                <p>Ancient Escape now automatically saves gameplay rows on this device after each move.</p>
+                <p>You can download all saved sessions from this browser, or clear saved data after exporting.</p>
+                <div className="buttonRow modalButtonRow">
+                  <button className="primaryButton" onClick={downloadSavedSessions}>Download Saved CSV</button>
+                  <button className="secondaryButton" onClick={clearSavedSessions}>Clear Saved Data</button>
                 </div>
               </>}
               <button className="secondaryButton modalClose" onClick={() => setModal(null)}>Close</button>
@@ -441,7 +492,8 @@ export default function App() {
             <div className="scoreBox lossBox"><strong>{losses}</strong><span>Caught / Timeout</span></div>
           </div>
           <div className="buttonRow">
-            <button className="primaryButton" onClick={() => downloadCSV(logs)}>Download CSV</button>
+            <button className="primaryButton" onClick={() => downloadCSV(logs)}>Download Current CSV</button>
+            <button className="secondaryButton" onClick={downloadSavedSessions}>Download Saved Data</button>
             <button className="secondaryButton" onClick={() => setScreen("welcome")}>Home</button>
           </div>
         </div>
