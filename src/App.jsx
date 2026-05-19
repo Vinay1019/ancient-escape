@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const GRID_SIZE = 9;
@@ -6,8 +6,12 @@ const GAMES_PER_SESSION = 3;
 const PARTICIPANT_START = { r: 0, c: 0 };
 const AI_START = { r: 0, c: 8 };
 const GOAL = { r: 8, c: 4 };
-const WALL_COUNT = 18;
-const MAX_TURNS = 35;
+
+const DIFFICULTY = {
+  Easy: { wallCount: 14, maxTurns: 40, aiMin: 52, aiMax: 70 },
+  Normal: { wallCount: 18, maxTurns: 35, aiMin: 55, aiMax: 80 },
+  Hard: { wallCount: 22, maxTurns: 30, aiMin: 62, aiMax: 88 },
+};
 
 const keyOf = (p) => `${p.r},${p.c}`;
 const same = (a, b) => a.r === b.r && a.c === b.c;
@@ -15,14 +19,14 @@ const manhattan = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
 const inBounds = (p) => p.r >= 0 && p.r < GRID_SIZE && p.c >= 0 && p.c < GRID_SIZE;
 
 const DIRS = [
-  { name: "Up", dr: -1, dc: 0 },
-  { name: "Down", dr: 1, dc: 0 },
-  { name: "Left", dr: 0, dc: -1 },
-  { name: "Right", dr: 0, dc: 1 },
+  { name: "Up", dr: -1, dc: 0, key: "ArrowUp", icon: "↑" },
+  { name: "Down", dr: 1, dc: 0, key: "ArrowDown", icon: "↓" },
+  { name: "Left", dr: 0, dc: -1, key: "ArrowLeft", icon: "←" },
+  { name: "Right", dr: 0, dc: 1, key: "ArrowRight", icon: "→" },
 ];
 
 function neighbors(pos, walls) {
-  return DIRS.map((d) => ({ r: pos.r + d.dr, c: pos.c + d.dc, move: d.name }))
+  return DIRS.map((d) => ({ r: pos.r + d.dr, c: pos.c + d.dc, move: d.name, icon: d.icon }))
     .filter((p) => inBounds(p) && !walls.has(keyOf(p)));
 }
 
@@ -46,18 +50,18 @@ function shortestPathExists(start, goal, walls) {
   return false;
 }
 
-function createWalls(level) {
+function createWalls(level, wallCount) {
   const protectedCells = new Set([keyOf(PARTICIPANT_START), keyOf(AI_START), keyOf(GOAL)]);
 
-  for (let attempts = 0; attempts < 500; attempts++) {
+  for (let attempts = 0; attempts < 700; attempts++) {
     const walls = new Set();
-
     const midCol = 3 + ((level + Math.floor(Math.random() * 3)) % 3);
+
     for (let r = 1; r < GRID_SIZE - 1; r++) {
       if (Math.random() < 0.55) walls.add(`${r},${midCol}`);
     }
 
-    while (walls.size < WALL_COUNT) {
+    while (walls.size < wallCount) {
       const p = {
         r: Math.floor(Math.random() * GRID_SIZE),
         c: Math.floor(Math.random() * GRID_SIZE),
@@ -77,7 +81,7 @@ function createWalls(level) {
   return new Set();
 }
 
-function aiMoveOptions(ai, participant, walls) {
+function aiMoveOptions(ai, participant, walls, difficultySettings) {
   const opts = neighbors(ai, walls).map((p) => ({
     ...p,
     label: p.move,
@@ -98,7 +102,7 @@ function aiMoveOptions(ai, participant, walls) {
   const total = firstScore + secondScore;
 
   let p1 = Math.round((firstScore / total) * 100);
-  p1 = Math.max(55, Math.min(80, p1));
+  p1 = Math.max(difficultySettings.aiMin, Math.min(difficultySettings.aiMax, p1));
   const p2 = 100 - p1;
 
   return [
@@ -135,6 +139,7 @@ function downloadCSV(rows) {
     "participantId",
     "age",
     "gender",
+    "difficulty",
     "game",
     "turn",
     "participantRow",
@@ -144,6 +149,9 @@ function downloadCSV(rows) {
     "participantMove",
     "aiPreview",
     "aiChosenMove",
+    "risk",
+    "goalDistance",
+    "aiDistance",
     "result",
     "timestamp",
   ];
@@ -166,35 +174,44 @@ export default function App() {
   const [participantId, setParticipantId] = useState("");
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("Prefer not to say");
+  const [difficulty, setDifficulty] = useState("Normal");
   const [game, setGame] = useState(1);
   const [turn, setTurn] = useState(1);
-  const [walls, setWalls] = useState(() => createWalls(1));
+  const [walls, setWalls] = useState(() => createWalls(1, DIFFICULTY.Normal.wallCount));
   const [player, setPlayer] = useState(PARTICIPANT_START);
   const [ai, setAi] = useState(AI_START);
-  const [message, setMessage] = useState("Choose your move. The guardian preview shows likely AI moves before you decide.");
+  const [message, setMessage] = useState("Study the guardian preview, then choose your route.");
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
+  const [showHelp, setShowHelp] = useState(false);
 
-  const aiOptions = useMemo(() => aiMoveOptions(ai, player, walls), [ai, player, walls]);
+  const settings = DIFFICULTY[difficulty];
+  const aiOptions = useMemo(() => aiMoveOptions(ai, player, walls, settings), [ai, player, walls, settings]);
   const playerOptions = useMemo(() => possiblePlayerMoves(player, ai, walls), [player, ai, walls]);
+  const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
 
   function resetLevel(nextGame = game) {
     setGame(nextGame);
     setTurn(1);
-    setWalls(createWalls(nextGame));
+    setWalls(createWalls(nextGame, settings.wallCount));
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
-    setMessage("Choose your move. The guardian preview shows likely AI moves before you decide.");
+    setMessage("Study the guardian preview, then choose your route.");
   }
 
   function startSession() {
     setLogs([]);
     setWins(0);
     setLosses(0);
-    resetLevel(1);
+    setTurn(1);
+    setGame(1);
+    setWalls(createWalls(1, settings.wallCount));
+    setPlayer(PARTICIPANT_START);
+    setAi(AI_START);
+    setResult(null);
     setScreen("game");
   }
 
@@ -203,13 +220,13 @@ export default function App() {
 
     if (status === "escaped") {
       setWins((w) => w + 1);
-      setMessage("You escaped the ancient maze!");
+      setMessage("Victory! You escaped the ancient maze.");
     } else if (status === "caught") {
       setLosses((l) => l + 1);
-      setMessage("The guardian caught you.");
+      setMessage("The guardian caught you. Analyze the safer route next time.");
     } else {
       setLosses((l) => l + 1);
-      setMessage("Turn limit reached.");
+      setMessage("Turn limit reached. The temple doors closed.");
     }
 
     setTimeout(() => {
@@ -218,11 +235,11 @@ export default function App() {
       } else {
         resetLevel(game + 1);
       }
-    }, 900);
+    }, 1100);
   }
 
   function movePlayer(target) {
-    if (result) return;
+    if (result || screen !== "game") return;
 
     const aiPreview = aiOptions.map((o) => `${o.label} ${o.probability}%`).join(" | ");
     const chosenAi = chooseWeighted(aiOptions);
@@ -240,7 +257,7 @@ export default function App() {
       if (same(nextAi, nextPlayer)) status = "caught";
     }
 
-    if (status === "playing" && turn >= MAX_TURNS) {
+    if (status === "playing" && turn >= settings.maxTurns) {
       status = "timeout";
     }
 
@@ -248,6 +265,7 @@ export default function App() {
       participantId,
       age,
       gender,
+      difficulty,
       game,
       turn,
       participantRow: nextPlayer.r,
@@ -257,6 +275,9 @@ export default function App() {
       participantMove: target.move,
       aiPreview,
       aiChosenMove,
+      risk: target.risk,
+      goalDistance: target.distanceToGoal,
+      aiDistance: target.distanceFromAI,
       result: status,
       timestamp: new Date().toISOString(),
     };
@@ -269,71 +290,106 @@ export default function App() {
     if (status !== "playing") {
       finishGame(status);
     } else {
-      setMessage(`You moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next move.`);
+      setMessage(`You moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
     }
   }
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      const dir = DIRS.find((d) => d.key === e.key);
+      if (!dir) return;
+      const target = playerOptions.find((o) => o.move === dir.name);
+      if (target) movePlayer(target);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [playerOptions, result, screen]);
 
   function cellContent(r, c) {
     const p = { r, c };
     if (same(p, player)) return "🧍";
     if (same(p, ai)) return "🛡️";
     if (same(p, GOAL)) return "🏁";
-    if (walls.has(`${r},${c}`)) return "";
     return "";
   }
 
   if (screen === "welcome") {
     return (
       <div className="page welcomePage">
-        <div className="welcomeCard">
-          <div className="heroPanel">
-            <div className="badge">🏛️ Ancient Strategy Experiment</div>
-            <h1>Ancient Escape</h1>
-            <p>
-              Escape the maze before the guardian catches you. Each turn shows two possible guardian moves with simple probability percentages before you choose your route.
-            </p>
+        <div className="templeGlow" />
+        <div className="welcomeShell">
+          <section className="heroPanel premiumPanel">
+            <div>
+              <div className="badge">🏛️ Ancient Decision-Making Experiment</div>
+              <h1>Ancient Escape</h1>
+              <p className="heroText">
+                A browser-based strategy experiment where participants balance speed, safety, and uncertainty while escaping a shifting ancient maze.
+              </p>
+            </div>
 
             <div className="featureGrid">
-              <div>9×9 changing maze</div>
-              <div>3 games per session</div>
-              <div>AI chase preview</div>
-              <div>CSV result export</div>
+              <div><strong>9×9</strong><span>Dynamic maze</span></div>
+              <div><strong>AI</strong><span>Guardian chase</span></div>
+              <div><strong>2</strong><span>Move probabilities</span></div>
+              <div><strong>CSV</strong><span>Data export</span></div>
             </div>
-          </div>
+          </section>
 
-          <div className="setupPanel">
+          <section className="setupPanel premiumPanel lightPanel">
             <h2>Participant Setup</h2>
-            <p>Enter participant details before starting the game.</p>
+            <p>Enter details and select difficulty before starting.</p>
 
             <label>
               Participant ID
               <input value={participantId} onChange={(e) => setParticipantId(e.target.value)} placeholder="Example: P001" />
             </label>
 
-            <label>
-              Age
-              <input value={age} onChange={(e) => setAge(e.target.value)} placeholder="Example: 25" />
-            </label>
+            <div className="twoColumnInputs">
+              <label>
+                Age
+                <input value={age} onChange={(e) => setAge(e.target.value)} placeholder="25" />
+              </label>
 
-            <label>
-              Gender
-              <select value={gender} onChange={(e) => setGender(e.target.value)}>
-                <option>Female</option>
-                <option>Male</option>
-                <option>Other</option>
-                <option>Prefer not to say</option>
-              </select>
-            </label>
+              <label>
+                Gender
+                <select value={gender} onChange={(e) => setGender(e.target.value)}>
+                  <option>Female</option>
+                  <option>Male</option>
+                  <option>Other</option>
+                  <option>Prefer not to say</option>
+                </select>
+              </label>
+            </div>
 
-            <button className="primaryButton" onClick={startSession} disabled={!participantId.trim()}>
-              ▶ Start Ancient Escape
+            <div className="difficultyBox">
+              <span>Difficulty</span>
+              <div className="difficultyButtons">
+                {Object.keys(DIFFICULTY).map((d) => (
+                  <button key={d} className={difficulty === d ? "activeDifficulty" : ""} onClick={() => setDifficulty(d)}>{d}</button>
+                ))}
+              </div>
+            </div>
+
+            <button className="primaryButton largeButton" onClick={startSession} disabled={!participantId.trim()}>
+              Start Experiment
             </button>
 
-            <div className="infoBox">
-              <b>Goal:</b> Reach 🏁 before the guardian 🛡️ catches you. Blocked paths are shown as dark cells.
+            <button className="textButton" onClick={() => setShowHelp(true)}>View instructions</button>
+          </section>
+        </div>
+
+        {showHelp && (
+          <div className="modalOverlay" onClick={() => setShowHelp(false)}>
+            <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+              <h2>How to Play</h2>
+              <p>Reach the goal 🏁 before the guardian 🛡️ catches you.</p>
+              <p>Before every move, you will see two possible guardian moves and their probabilities.</p>
+              <p>Choose using the highlighted cells, move cards, or keyboard arrow keys.</p>
+              <button className="primaryButton" onClick={() => setShowHelp(false)}>Got it</button>
             </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -341,9 +397,10 @@ export default function App() {
   if (screen === "summary") {
     return (
       <div className="page centerPage">
-        <div className="summaryCard">
-          <h1>Session Complete</h1>
-          <p>Ancient Escape results for participant {participantId}</p>
+        <div className="summaryCard premiumPanel lightPanel">
+          <div className="badge darkBadge">🏁 Session Complete</div>
+          <h1>Ancient Escape Results</h1>
+          <p>Participant {participantId} completed {GAMES_PER_SESSION} games on {difficulty} difficulty.</p>
 
           <div className="scoreGrid">
             <div className="scoreBox winBox">
@@ -357,8 +414,8 @@ export default function App() {
           </div>
 
           <div className="buttonRow">
-            <button className="primaryButton" onClick={() => downloadCSV(logs)}>⬇ Download CSV</button>
-            <button className="secondaryButton" onClick={() => setScreen("welcome")}>↻ New Session</button>
+            <button className="primaryButton" onClick={() => downloadCSV(logs)}>Download CSV</button>
+            <button className="secondaryButton" onClick={() => setScreen("welcome")}>New Session</button>
           </div>
         </div>
       </div>
@@ -368,15 +425,17 @@ export default function App() {
   return (
     <div className="page gamePage">
       <main className="gameLayout">
-        <section className="boardCard">
+        <section className="boardCard premiumPanel lightPanel">
           <div className="gameHeader">
             <div>
-              <h1>Ancient Escape</h1>
-              <p>Game {game} of {GAMES_PER_SESSION} · Turn {turn} of {MAX_TURNS}</p>
+              <div className="smallCaps">Ancient Escape</div>
+              <h1>Temple Maze</h1>
+              <p>Game {game} of {GAMES_PER_SESSION} · Turn {turn} of {settings.maxTurns} · {difficulty}</p>
             </div>
-            <button className="secondaryButton" onClick={() => resetLevel(game)}>↻ Restart Level</button>
+            <button className="secondaryButton" onClick={() => resetLevel(game)}>Restart Level</button>
           </div>
 
+          <div className="progressTrack"><div style={{ width: `${progress}%` }} /></div>
           <div className="messageBox">{message}</div>
 
           <div className="grid" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
@@ -412,13 +471,13 @@ export default function App() {
         </section>
 
         <aside className="sidePanel">
-          <section className="panelCard">
-            <h2>🛡️ Guardian Preview</h2>
-            <p>These probabilities are shown before you choose your move.</p>
+          <section className="panelCard premiumPanel darkPanel">
+            <h2>Guardian Probability</h2>
+            <p>Shown before participant choice.</p>
             {aiOptions.map((o, index) => (
               <div className="probBox" key={index}>
                 <div className="probHeader">
-                  <span>{o.label}</span>
+                  <span>{o.icon} {o.label}</span>
                   <b>{o.probability}%</b>
                 </div>
                 <div className="bar"><div style={{ width: `${o.probability}%` }} /></div>
@@ -426,25 +485,25 @@ export default function App() {
             ))}
           </section>
 
-          <section className="panelCard">
+          <section className="panelCard premiumPanel lightPanel">
             <h2>Your Move Options</h2>
             {playerOptions.length === 0 && <p>No available moves.</p>}
             {playerOptions.map((o) => (
               <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
-                <span><b>{o.move}</b></span>
+                <span><b>{o.icon} {o.move}</b></span>
                 <span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span>
                 <small>Goal distance: {o.distanceToGoal} · AI distance: {o.distanceFromAI}</small>
               </button>
             ))}
           </section>
 
-          <section className="panelCard legend">
+          <section className="panelCard premiumPanel lightPanel legend">
             <h2>Legend</h2>
             <p>🧍 Participant</p>
             <p>🛡️ Guardian AI</p>
             <p>🏁 Escape Goal</p>
             <p><span className="miniWall" /> Blocked Path</p>
-            <small>Click a highlighted adjacent cell or use the move cards.</small>
+            <small>Use highlighted cells, move cards, or keyboard arrow keys.</small>
           </section>
         </aside>
       </main>
