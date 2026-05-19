@@ -163,6 +163,22 @@ export default function App() {
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
+
+    if (selectedMode === "Experiment") {
+      setScreen("consent");
+    } else {
+      setScreen("instructions");
+    }
+  }
+
+  function beginGame() {
+    setTurn(1);
+    setGame(1);
+    setWalls(createWalls(1, settings.wallCount));
+    setPlayer(PARTICIPANT_START);
+    setAi(AI_START);
+    setResult(null);
+    setMessage("Study the guardian preview, then choose your route.");
     setScreen("game");
   }
 
@@ -313,6 +329,57 @@ export default function App() {
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (screen === "consent") {
+    return (
+      <div className="page centerPage">
+        <div className="flowCard premiumPanel lightPanel">
+          <div className="badge darkBadge">Participant Consent</div>
+          <h1>Before You Begin</h1>
+          <p>
+            You are about to take part in Ancient Escape, a decision-making strategy task. The game records your moves, guardian probability previews, difficulty, result, and timestamps for each turn.
+          </p>
+          <div className="consentBox">
+            <label className="checkLine"><input type="checkbox" /> I understand this is a game-based task.</label>
+            <label className="checkLine"><input type="checkbox" /> I understand my gameplay data may be exported as CSV.</label>
+            <label className="checkLine"><input type="checkbox" /> I am ready to continue to the instructions.</label>
+          </div>
+          <div className="buttonRow">
+            <button className="secondaryButton" onClick={() => setScreen("welcome")}>Back</button>
+            <button className="primaryButton" onClick={() => setScreen("instructions")}>I Agree & Continue</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "instructions") {
+    return (
+      <div className="page centerPage">
+        <div className="flowCard premiumPanel lightPanel">
+          <div className="badge darkBadge">How to Play</div>
+          <h1>{mode === "Practice" ? "Practice Round" : "Experiment Instructions"}</h1>
+          <div className="instructionGrid">
+            <div><strong>🧍 Your role</strong><span>Move through the maze and reach the goal.</span></div>
+            <div><strong>🏁 Goal</strong><span>Escape before the guardian catches you.</span></div>
+            <div><strong>🛡️ Guardian</strong><span>The guardian moves after every participant move.</span></div>
+            <div><strong>📊 Probability</strong><span>Two likely guardian moves are shown before you choose.</span></div>
+            <div><strong>⚠️ Risk</strong><span>Some faster routes may be more dangerous.</span></div>
+            <div><strong>🎮 Controls</strong><span>Use highlighted cells, move cards, or arrow keys.</span></div>
+          </div>
+          <div className="flowNote">
+            {mode === "Practice"
+              ? "Practice mode runs one game only and helps users understand the rules before the main task."
+              : "Experiment mode runs three games and saves detailed move-by-move data for CSV export."}
+          </div>
+          <div className="buttonRow">
+            <button className="secondaryButton" onClick={() => setScreen("welcome")}>Back Home</button>
+            <button className="primaryButton" onClick={beginGame}>{mode === "Practice" ? "Start Practice" : "Start Experiment"}</button>
+          </div>
+        </div>
       </div>
     );
   }

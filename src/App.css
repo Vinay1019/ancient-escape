@@ -624,3 +624,95 @@ button {
     padding: 17px 20px;
   }
 }
+
+.flowCard {
+  width: 100%;
+  max-width: 820px;
+  padding: 34px;
+  text-align: left;
+}
+
+.flowCard h1 {
+  margin: 8px 0 14px;
+  font-size: 42px;
+  color: #9b3d3a;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.flowCard p {
+  color: #5d4a38;
+  line-height: 1.6;
+  font-size: 17px;
+}
+
+.consentBox {
+  background: #fff4d8;
+  border: 1px solid #e0b84d;
+  border-radius: 18px;
+  padding: 18px;
+  margin: 22px 0;
+}
+
+.checkLine {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 0;
+  font-weight: 800;
+  color: #3e2c21;
+}
+
+.checkLine input {
+  width: auto;
+  margin-top: 4px;
+}
+
+.instructionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin: 24px 0;
+}
+
+.instructionGrid div {
+  background: #fff4d8;
+  border: 1px solid #e0b84d;
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.instructionGrid strong {
+  display: block;
+  color: #8a3a16;
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+
+.instructionGrid span {
+  color: #5d4a38;
+  line-height: 1.4;
+}
+
+.flowNote {
+  background: #f4ead1;
+  border-left: 5px solid #9b3d3a;
+  padding: 16px;
+  border-radius: 14px;
+  color: #4b351b;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 650px) {
+  .instructionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .flowCard {
+    padding: 24px;
+  }
+
+  .flowCard h1 {
+    font-size: 34px;
+  }
+}
