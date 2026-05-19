@@ -1,0 +1,403 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f5efe4;
+}
+
+button {
+  font-family: inherit;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.welcomePage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f7d98b, #f5efe4, #d99b55);
+}
+
+.welcomeCard {
+  width: 100%;
+  max-width: 1100px;
+  min-height: 580px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: white;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.heroPanel {
+  padding: 42px;
+  background: linear-gradient(135deg, #1f1a17, #4b250c, #7c3f12);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.badge {
+  display: inline-block;
+  background: rgba(255, 193, 7, 0.18);
+  border: 1px solid rgba(255, 236, 179, 0.4);
+  padding: 10px 14px;
+  border-radius: 999px;
+  margin-bottom: 28px;
+}
+
+.heroPanel h1 {
+  font-size: 56px;
+  margin: 0 0 18px;
+}
+
+.heroPanel p {
+  font-size: 18px;
+  line-height: 1.6;
+  color: #ffe9bf;
+}
+
+.featureGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.featureGrid div {
+  background: rgba(255, 255, 255, 0.12);
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.setupPanel {
+  padding: 42px;
+}
+
+.setupPanel h2 {
+  margin: 0 0 8px;
+  font-size: 28px;
+}
+
+.setupPanel p {
+  color: #675c52;
+  margin-bottom: 24px;
+}
+
+label {
+  display: block;
+  font-weight: 700;
+  color: #40352d;
+  margin-bottom: 18px;
+}
+
+input,
+select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 14px 16px;
+  border: 1px solid #d7c5b6;
+  border-radius: 14px;
+  font-size: 16px;
+}
+
+.primaryButton,
+.secondaryButton {
+  border: none;
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton {
+  background: #8a4b16;
+  color: white;
+}
+
+.primaryButton:hover {
+  background: #6f390e;
+}
+
+.primaryButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: white;
+  color: #3b3028;
+  border: 1px solid #d7c5b6;
+}
+
+.infoBox,
+.messageBox {
+  background: #fff4d8;
+  border: 1px solid #e7c66c;
+  color: #5b4214;
+  padding: 16px;
+  border-radius: 16px;
+  margin-top: 22px;
+}
+
+.gamePage {
+  background: linear-gradient(135deg, #f5efe4, #f7d98b);
+}
+
+.gameLayout {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 18px;
+}
+
+.boardCard,
+.panelCard,
+.summaryCard {
+  background: white;
+  border-radius: 22px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.14);
+}
+
+.boardCard {
+  padding: 22px;
+}
+
+.gameHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.gameHeader h1 {
+  margin: 0;
+  font-size: 34px;
+}
+
+.gameHeader p {
+  margin: 6px 0 0;
+  color: #6b625c;
+}
+
+.grid {
+  width: min(100%, 620px);
+  margin: 22px auto 0;
+  display: grid;
+  gap: 5px;
+  background: #29231f;
+  padding: 10px;
+  border-radius: 20px;
+}
+
+.cell {
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  border: 1px solid #cdbba9;
+  background: #f3eadf;
+  font-size: 26px;
+  cursor: default;
+}
+
+.cell.wall {
+  background: #171411;
+  border-color: #171411;
+}
+
+.cell.goal {
+  background: #bfe8bf;
+  border-color: #35a853;
+}
+
+.cell.player {
+  background: #b9d7ff;
+  border-color: #3178c6;
+}
+
+.cell.guardian {
+  background: #ffc0b8;
+  border-color: #d93025;
+}
+
+.cell.option {
+  outline: 4px solid #e6a11c;
+  cursor: pointer;
+}
+
+.cell.option:hover {
+  transform: scale(1.05);
+}
+
+.sidePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.panelCard {
+  padding: 20px;
+}
+
+.panelCard h2 {
+  margin: 0 0 8px;
+}
+
+.panelCard p {
+  color: #655b52;
+}
+
+.probBox {
+  background: #f8f4ef;
+  border: 1px solid #e1d2c3;
+  border-radius: 16px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.probHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.bar {
+  height: 12px;
+  background: #e7ddd4;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar div {
+  height: 100%;
+  background: #c33622;
+}
+
+.moveButton {
+  width: 100%;
+  text-align: left;
+  background: white;
+  border: 1px solid #dfd0c2;
+  border-radius: 16px;
+  padding: 14px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.moveButton:hover {
+  background: #fff4d8;
+}
+
+.moveButton small {
+  display: block;
+  color: #6d6259;
+  margin-top: 6px;
+}
+
+.risk {
+  float: right;
+  font-weight: 700;
+}
+
+.risk.high {
+  color: #c33622;
+}
+
+.risk.medium {
+  color: #b9770e;
+}
+
+.risk.low {
+  color: #218c4f;
+}
+
+.legend p {
+  margin: 8px 0;
+}
+
+.miniWall {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  background: #171411;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.centerPage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5efe4;
+}
+
+.summaryCard {
+  width: 100%;
+  max-width: 650px;
+  padding: 36px;
+  text-align: center;
+}
+
+.summaryCard h1 {
+  font-size: 42px;
+  margin: 0 0 10px;
+}
+
+.scoreGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin: 30px 0;
+}
+
+.scoreBox {
+  padding: 28px;
+  border-radius: 20px;
+}
+
+.scoreBox strong {
+  display: block;
+  font-size: 46px;
+}
+
+.winBox {
+  background: #e1f5e5;
+  color: #1c6b38;
+}
+
+.lossBox {
+  background: #fde4df;
+  color: #9f2819;
+}
+
+.buttonRow {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .welcomeCard,
+  .gameLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .heroPanel h1 {
+    font-size: 42px;
+  }
+
+  .grid {
+    width: 100%;
+  }
+}
