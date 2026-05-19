@@ -33,11 +33,9 @@ function neighbors(pos, walls) {
 function shortestPathExists(start, goal, walls) {
   const q = [start];
   const seen = new Set([keyOf(start)]);
-
   while (q.length > 0) {
     const current = q.shift();
     if (same(current, goal)) return true;
-
     for (const n of neighbors(current, walls)) {
       const k = keyOf(n);
       if (!seen.has(k)) {
@@ -46,82 +44,52 @@ function shortestPathExists(start, goal, walls) {
       }
     }
   }
-
   return false;
 }
 
 function createWalls(level, wallCount) {
   const protectedCells = new Set([keyOf(PARTICIPANT_START), keyOf(AI_START), keyOf(GOAL)]);
-
   for (let attempts = 0; attempts < 700; attempts++) {
     const walls = new Set();
     const midCol = 3 + ((level + Math.floor(Math.random() * 3)) % 3);
-
     for (let r = 1; r < GRID_SIZE - 1; r++) {
       if (Math.random() < 0.55) walls.add(`${r},${midCol}`);
     }
-
     while (walls.size < wallCount) {
-      const p = {
-        r: Math.floor(Math.random() * GRID_SIZE),
-        c: Math.floor(Math.random() * GRID_SIZE),
-      };
+      const p = { r: Math.floor(Math.random() * GRID_SIZE), c: Math.floor(Math.random() * GRID_SIZE) };
       const k = keyOf(p);
       if (!protectedCells.has(k)) walls.add(k);
     }
-
-    if (
-      shortestPathExists(PARTICIPANT_START, GOAL, walls) &&
-      shortestPathExists(AI_START, PARTICIPANT_START, walls)
-    ) {
+    if (shortestPathExists(PARTICIPANT_START, GOAL, walls) && shortestPathExists(AI_START, PARTICIPANT_START, walls)) {
       return walls;
     }
   }
-
   return new Set();
 }
 
 function aiMoveOptions(ai, participant, walls, difficultySettings) {
-  const opts = neighbors(ai, walls).map((p) => ({
-    ...p,
-    label: p.move,
-    distanceToPlayer: manhattan(p, participant),
-  }));
-
+  const opts = neighbors(ai, walls).map((p) => ({ ...p, label: p.move, distanceToPlayer: manhattan(p, participant) }));
   if (opts.length === 0) return [];
-
   opts.sort((a, b) => a.distanceToPlayer - b.distanceToPlayer);
   const top = opts.slice(0, 2);
-
-  if (top.length === 1) {
-    return [{ ...top[0], probability: 100 }];
-  }
+  if (top.length === 1) return [{ ...top[0], probability: 100 }];
 
   const firstScore = Math.max(1, 10 - top[0].distanceToPlayer);
   const secondScore = Math.max(1, 10 - top[1].distanceToPlayer);
   const total = firstScore + secondScore;
-
   let p1 = Math.round((firstScore / total) * 100);
   p1 = Math.max(difficultySettings.aiMin, Math.min(difficultySettings.aiMax, p1));
-  const p2 = 100 - p1;
-
-  return [
-    { ...top[0], probability: p1 },
-    { ...top[1], probability: p2 },
-  ];
+  return [{ ...top[0], probability: p1 }, { ...top[1], probability: 100 - p1 }];
 }
 
 function chooseWeighted(options) {
   if (options.length === 0) return null;
-
   const roll = Math.random() * 100;
   let total = 0;
-
   for (const opt of options) {
     total += opt.probability;
     if (roll <= total) return opt;
   }
-
   return options[options.length - 1];
 }
 
@@ -135,31 +103,10 @@ function possiblePlayerMoves(player, ai, walls) {
 }
 
 function downloadCSV(rows) {
-  const headers = [
-    "participantId",
-    "age",
-    "gender",
-    "difficulty",
-    "game",
-    "turn",
-    "participantRow",
-    "participantCol",
-    "aiRow",
-    "aiCol",
-    "participantMove",
-    "aiPreview",
-    "aiChosenMove",
-    "risk",
-    "goalDistance",
-    "aiDistance",
-    "result",
-    "timestamp",
-  ];
-
+  const headers = ["participantId", "age", "gender", "difficulty", "mode", "game", "turn", "participantRow", "participantCol", "aiRow", "aiCol", "participantMove", "aiPreview", "aiChosenMove", "risk", "goalDistance", "aiDistance", "result", "timestamp"];
   const csv = [headers.join(",")]
     .concat(rows.map((row) => headers.map((h) => JSON.stringify(row[h] ?? "")).join(",")))
     .join("\n");
-
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -175,6 +122,7 @@ export default function App() {
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("Prefer not to say");
   const [difficulty, setDifficulty] = useState("Normal");
+  const [mode, setMode] = useState("Experiment");
   const [game, setGame] = useState(1);
   const [turn, setTurn] = useState(1);
   const [walls, setWalls] = useState(() => createWalls(1, DIFFICULTY.Normal.wallCount));
@@ -185,9 +133,11 @@ export default function App() {
   const [logs, setLogs] = useState([]);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
-  const [showHelp, setShowHelp] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [feedback, setFeedback] = useState("");
 
   const settings = DIFFICULTY[difficulty];
+  const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
   const aiOptions = useMemo(() => aiMoveOptions(ai, player, walls, settings), [ai, player, walls, settings]);
   const playerOptions = useMemo(() => possiblePlayerMoves(player, ai, walls), [player, ai, walls]);
   const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
@@ -202,7 +152,8 @@ export default function App() {
     setMessage("Study the guardian preview, then choose your route.");
   }
 
-  function startSession() {
+  function startSession(selectedMode = "Experiment") {
+    setMode(selectedMode);
     setLogs([]);
     setWins(0);
     setLosses(0);
@@ -217,7 +168,6 @@ export default function App() {
 
   function finishGame(status) {
     setResult(status);
-
     if (status === "escaped") {
       setWins((w) => w + 1);
       setMessage("Victory! You escaped the ancient maze.");
@@ -228,70 +178,37 @@ export default function App() {
       setLosses((l) => l + 1);
       setMessage("Turn limit reached. The temple doors closed.");
     }
-
     setTimeout(() => {
-      if (game >= GAMES_PER_SESSION) {
-        setScreen("summary");
-      } else {
-        resetLevel(game + 1);
-      }
+      if (game >= totalGames) setScreen("summary");
+      else resetLevel(game + 1);
     }, 1100);
   }
 
   function movePlayer(target) {
     if (result || screen !== "game") return;
-
     const aiPreview = aiOptions.map((o) => `${o.label} ${o.probability}%`).join(" | ");
     const chosenAi = chooseWeighted(aiOptions);
-
     const nextPlayer = { r: target.r, c: target.c };
     let nextAi = ai;
     let status = "playing";
     let aiChosenMove = "None";
 
-    if (same(nextPlayer, GOAL)) {
-      status = "escaped";
-    } else if (chosenAi) {
+    if (same(nextPlayer, GOAL)) status = "escaped";
+    else if (chosenAi) {
       nextAi = { r: chosenAi.r, c: chosenAi.c };
       aiChosenMove = chosenAi.label;
       if (same(nextAi, nextPlayer)) status = "caught";
     }
+    if (status === "playing" && turn >= settings.maxTurns) status = "timeout";
 
-    if (status === "playing" && turn >= settings.maxTurns) {
-      status = "timeout";
-    }
-
-    const row = {
-      participantId,
-      age,
-      gender,
-      difficulty,
-      game,
-      turn,
-      participantRow: nextPlayer.r,
-      participantCol: nextPlayer.c,
-      aiRow: nextAi.r,
-      aiCol: nextAi.c,
-      participantMove: target.move,
-      aiPreview,
-      aiChosenMove,
-      risk: target.risk,
-      goalDistance: target.distanceToGoal,
-      aiDistance: target.distanceFromAI,
-      result: status,
-      timestamp: new Date().toISOString(),
-    };
-
+    const row = { participantId, age, gender, difficulty, mode, game, turn, participantRow: nextPlayer.r, participantCol: nextPlayer.c, aiRow: nextAi.r, aiCol: nextAi.c, participantMove: target.move, aiPreview, aiChosenMove, risk: target.risk, goalDistance: target.distanceToGoal, aiDistance: target.distanceFromAI, result: status, timestamp: new Date().toISOString() };
     setLogs((oldLogs) => [...oldLogs, row]);
     setPlayer(nextPlayer);
     setAi(nextAi);
     setTurn((t) => t + 1);
 
-    if (status !== "playing") {
-      finishGame(status);
-    } else {
-      setMessage(`You moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
-    }
+    if (status !== "playing") finishGame(status);
+    else setMessage(`You moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
   }
 
   useEffect(() => {
@@ -301,10 +218,15 @@ export default function App() {
       const target = playerOptions.find((o) => o.move === dir.name);
       if (target) movePlayer(target);
     }
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [playerOptions, result, screen]);
+
+  function sendFeedback() {
+    const subject = encodeURIComponent("Ancient Escape Feedback");
+    const body = encodeURIComponent(feedback || "Feedback about Ancient Escape:");
+    window.location.href = `mailto:pavulurivinay@gmail.com?subject=${subject}&body=${body}`;
+  }
 
   function cellContent(r, c) {
     const p = { r, c };
@@ -316,77 +238,78 @@ export default function App() {
 
   if (screen === "welcome") {
     return (
-      <div className="page welcomePage">
-        <div className="templeGlow" />
-        <div className="welcomeShell">
-          <section className="heroPanel premiumPanel">
-            <div>
-              <div className="badge">🏛️ Ancient Decision-Making Experiment</div>
-              <h1>Ancient Escape</h1>
-              <p className="heroText">
-                A browser-based strategy experiment where participants balance speed, safety, and uncertainty while escaping a shifting ancient maze.
-              </p>
-            </div>
+      <div className="homePage">
+        <div className="homeOverlay" />
+        <button className="settingsButton" onClick={() => setModal("settings")}>⚙️</button>
 
-            <div className="featureGrid">
-              <div><strong>9×9</strong><span>Dynamic maze</span></div>
-              <div><strong>AI</strong><span>Guardian chase</span></div>
-              <div><strong>2</strong><span>Move probabilities</span></div>
-              <div><strong>CSV</strong><span>Data export</span></div>
+        <main className="homeContent">
+          <div className="logoBlock">
+            <h1>ANCIENT ESCAPE</h1>
+            <p>INDIAN STRATEGY BATTLE</p>
+          </div>
+
+          <section className="installCard">
+            <h2>Download Ancient Escape</h2>
+            <p>Install the game to your home screen for the best full-screen experience.</p>
+            <div className="installHint">👆 Tap browser menu, then choose <b>Install App</b> or <b>Add to Home Screen</b></div>
+          </section>
+
+          <section className="quickSetup">
+            <input value={participantId} onChange={(e) => setParticipantId(e.target.value)} placeholder="Participant ID" />
+            <div className="compactRow">
+              <input value={age} onChange={(e) => setAge(e.target.value)} placeholder="Age" />
+              <select value={gender} onChange={(e) => setGender(e.target.value)}>
+                <option>Female</option>
+                <option>Male</option>
+                <option>Other</option>
+                <option>Prefer not to say</option>
+              </select>
+            </div>
+            <div className="difficultyPills">
+              {Object.keys(DIFFICULTY).map((d) => <button key={d} className={difficulty === d ? "active" : ""} onClick={() => setDifficulty(d)}>{d}</button>)}
             </div>
           </section>
 
-          <section className="setupPanel premiumPanel lightPanel">
-            <h2>Participant Setup</h2>
-            <p>Enter details and select difficulty before starting.</p>
-
-            <label>
-              Participant ID
-              <input value={participantId} onChange={(e) => setParticipantId(e.target.value)} placeholder="Example: P001" />
-            </label>
-
-            <div className="twoColumnInputs">
-              <label>
-                Age
-                <input value={age} onChange={(e) => setAge(e.target.value)} placeholder="25" />
-              </label>
-
-              <label>
-                Gender
-                <select value={gender} onChange={(e) => setGender(e.target.value)}>
-                  <option>Female</option>
-                  <option>Male</option>
-                  <option>Other</option>
-                  <option>Prefer not to say</option>
-                </select>
-              </label>
+          <div className="homeButtons">
+            <button className="mainPlayButton" onClick={() => startSession("Experiment")} disabled={!participantId.trim()}>🧠 Play Now</button>
+            <button className="menuButton" onClick={() => setModal("online")}>👥 Online Multiplayer</button>
+            <button className="menuButton" onClick={() => startSession("Practice")}>🤖 Practice with AI</button>
+            <div className="twoButtonRow">
+              <button className="menuButton smallMenu" onClick={() => setModal("feedback")}>💬 Feedback</button>
+              <button className="menuButton smallMenu" onClick={() => setModal("learn")}>📖 Learn</button>
             </div>
+          </div>
+        </main>
 
-            <div className="difficultyBox">
-              <span>Difficulty</span>
-              <div className="difficultyButtons">
-                {Object.keys(DIFFICULTY).map((d) => (
-                  <button key={d} className={difficulty === d ? "activeDifficulty" : ""} onClick={() => setDifficulty(d)}>{d}</button>
-                ))}
-              </div>
-            </div>
-
-            <button className="primaryButton largeButton" onClick={startSession} disabled={!participantId.trim()}>
-              Start Experiment
-            </button>
-
-            <button className="textButton" onClick={() => setShowHelp(true)}>View instructions</button>
-          </section>
-        </div>
-
-        {showHelp && (
-          <div className="modalOverlay" onClick={() => setShowHelp(false)}>
+        {modal && (
+          <div className="modalOverlay" onClick={() => setModal(null)}>
             <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-              <h2>How to Play</h2>
-              <p>Reach the goal 🏁 before the guardian 🛡️ catches you.</p>
-              <p>Before every move, you will see two possible guardian moves and their probabilities.</p>
-              <p>Choose using the highlighted cells, move cards, or keyboard arrow keys.</p>
-              <button className="primaryButton" onClick={() => setShowHelp(false)}>Got it</button>
+              {modal === "online" && <>
+                <h2>Online Multiplayer</h2>
+                <p>This button is ready on the home screen. True live multiplayer needs a backend room system, such as Firebase or Supabase.</p>
+                <p>For now, share your current app link with friends so they can play the same version.</p>
+                <button className="primaryButton" onClick={() => navigator.clipboard.writeText(window.location.href)}>Copy App Link</button>
+              </>}
+              {modal === "feedback" && <>
+                <h2>Send Feedback</h2>
+                <p>Write feedback, then send it through your email app.</p>
+                <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Type your feedback here..." />
+                <button className="primaryButton" onClick={sendFeedback}>Send Feedback</button>
+              </>}
+              {modal === "learn" && <>
+                <h2>How to Play</h2>
+                <p>Reach 🏁 before the guardian 🛡️ catches you. Each turn shows two possible guardian moves and their probabilities.</p>
+                <p>Choose the faster path when you want speed, or the safer path when the guardian is close.</p>
+                <p>You can use highlighted cells, move buttons, or keyboard arrow keys.</p>
+              </>}
+              {modal === "settings" && <>
+                <h2>Game Settings</h2>
+                <p>Difficulty controls wall count, turn limit, and guardian chase strength.</p>
+                <div className="difficultyPills modalPills">
+                  {Object.keys(DIFFICULTY).map((d) => <button key={d} className={difficulty === d ? "active" : ""} onClick={() => setDifficulty(d)}>{d}</button>)}
+                </div>
+              </>}
+              <button className="secondaryButton modalClose" onClick={() => setModal(null)}>Close</button>
             </div>
           </div>
         )}
@@ -400,22 +323,14 @@ export default function App() {
         <div className="summaryCard premiumPanel lightPanel">
           <div className="badge darkBadge">🏁 Session Complete</div>
           <h1>Ancient Escape Results</h1>
-          <p>Participant {participantId} completed {GAMES_PER_SESSION} games on {difficulty} difficulty.</p>
-
+          <p>{mode} mode complete for {participantId || "Practice Player"}.</p>
           <div className="scoreGrid">
-            <div className="scoreBox winBox">
-              <strong>{wins}</strong>
-              <span>Escapes</span>
-            </div>
-            <div className="scoreBox lossBox">
-              <strong>{losses}</strong>
-              <span>Caught / Timeout</span>
-            </div>
+            <div className="scoreBox winBox"><strong>{wins}</strong><span>Escapes</span></div>
+            <div className="scoreBox lossBox"><strong>{losses}</strong><span>Caught / Timeout</span></div>
           </div>
-
           <div className="buttonRow">
             <button className="primaryButton" onClick={() => downloadCSV(logs)}>Download CSV</button>
-            <button className="secondaryButton" onClick={() => setScreen("welcome")}>New Session</button>
+            <button className="secondaryButton" onClick={() => setScreen("welcome")}>Home</button>
           </div>
         </div>
       </div>
@@ -428,45 +343,29 @@ export default function App() {
         <section className="boardCard premiumPanel lightPanel">
           <div className="gameHeader">
             <div>
-              <div className="smallCaps">Ancient Escape</div>
+              <div className="smallCaps">{mode} Mode</div>
               <h1>Temple Maze</h1>
-              <p>Game {game} of {GAMES_PER_SESSION} · Turn {turn} of {settings.maxTurns} · {difficulty}</p>
+              <p>Game {game} of {totalGames} · Turn {turn} of {settings.maxTurns} · {difficulty}</p>
             </div>
             <button className="secondaryButton" onClick={() => resetLevel(game)}>Restart Level</button>
           </div>
-
           <div className="progressTrack"><div style={{ width: `${progress}%` }} /></div>
           <div className="messageBox">{message}</div>
-
           <div className="grid" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
-            {Array.from({ length: GRID_SIZE }).map((_, r) =>
-              Array.from({ length: GRID_SIZE }).map((_, c) => {
-                const isWall = walls.has(`${r},${c}`);
-                const isGoal = same({ r, c }, GOAL);
-                const isPlayer = same({ r, c }, player);
-                const isAi = same({ r, c }, ai);
-                const moveOption = playerOptions.find((o) => o.r === r && o.c === c);
-
-                let className = "cell";
-                if (isWall) className += " wall";
-                if (isGoal) className += " goal";
-                if (isPlayer) className += " player";
-                if (isAi) className += " guardian";
-                if (moveOption) className += " option";
-
-                return (
-                  <button
-                    key={`${r}-${c}`}
-                    onClick={() => moveOption && movePlayer(moveOption)}
-                    disabled={!moveOption || !!result}
-                    className={className}
-                    title={moveOption ? `${moveOption.move}: Goal distance ${moveOption.distanceToGoal}, risk ${moveOption.risk}` : ""}
-                  >
-                    {cellContent(r, c)}
-                  </button>
-                );
-              })
-            )}
+            {Array.from({ length: GRID_SIZE }).map((_, r) => Array.from({ length: GRID_SIZE }).map((_, c) => {
+              const isWall = walls.has(`${r},${c}`);
+              const isGoal = same({ r, c }, GOAL);
+              const isPlayer = same({ r, c }, player);
+              const isAi = same({ r, c }, ai);
+              const moveOption = playerOptions.find((o) => o.r === r && o.c === c);
+              let className = "cell";
+              if (isWall) className += " wall";
+              if (isGoal) className += " goal";
+              if (isPlayer) className += " player";
+              if (isAi) className += " guardian";
+              if (moveOption) className += " option";
+              return <button key={`${r}-${c}`} onClick={() => moveOption && movePlayer(moveOption)} disabled={!moveOption || !!result} className={className}>{cellContent(r, c)}</button>;
+            }))}
           </div>
         </section>
 
@@ -474,36 +373,15 @@ export default function App() {
           <section className="panelCard premiumPanel darkPanel">
             <h2>Guardian Probability</h2>
             <p>Shown before participant choice.</p>
-            {aiOptions.map((o, index) => (
-              <div className="probBox" key={index}>
-                <div className="probHeader">
-                  <span>{o.icon} {o.label}</span>
-                  <b>{o.probability}%</b>
-                </div>
-                <div className="bar"><div style={{ width: `${o.probability}%` }} /></div>
-              </div>
-            ))}
+            {aiOptions.map((o, index) => <div className="probBox" key={index}><div className="probHeader"><span>{o.icon} {o.label}</span><b>{o.probability}%</b></div><div className="bar"><div style={{ width: `${o.probability}%` }} /></div></div>)}
           </section>
-
           <section className="panelCard premiumPanel lightPanel">
             <h2>Your Move Options</h2>
-            {playerOptions.length === 0 && <p>No available moves.</p>}
-            {playerOptions.map((o) => (
-              <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
-                <span><b>{o.icon} {o.move}</b></span>
-                <span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span>
-                <small>Goal distance: {o.distanceToGoal} · AI distance: {o.distanceFromAI}</small>
-              </button>
-            ))}
+            {playerOptions.map((o) => <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton"><span><b>{o.icon} {o.move}</b></span><span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span><small>Goal distance: {o.distanceToGoal} · AI distance: {o.distanceFromAI}</small></button>)}
           </section>
-
           <section className="panelCard premiumPanel lightPanel legend">
             <h2>Legend</h2>
-            <p>🧍 Participant</p>
-            <p>🛡️ Guardian AI</p>
-            <p>🏁 Escape Goal</p>
-            <p><span className="miniWall" /> Blocked Path</p>
-            <small>Use highlighted cells, move cards, or keyboard arrow keys.</small>
+            <p>🧍 Participant</p><p>🛡️ Guardian AI</p><p>🏁 Escape Goal</p><p><span className="miniWall" /> Blocked Path</p>
           </section>
         </aside>
       </main>
