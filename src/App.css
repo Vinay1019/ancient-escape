@@ -716,3 +716,9 @@ button {
     font-size: 34px;
   }
 }
+
+.timerLine {
+  margin-top: 6px !important;
+  font-weight: 800;
+  color: #8a3a16 !important;
+}

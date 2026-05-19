@@ -103,7 +103,7 @@ function possiblePlayerMoves(player, ai, walls) {
 }
 
 function downloadCSV(rows) {
-  const headers = ["participantId", "age", "gender", "difficulty", "mode", "game", "turn", "participantRow", "participantCol", "aiRow", "aiCol", "participantMove", "aiPreview", "aiChosenMove", "risk", "goalDistance", "aiDistance", "result", "timestamp"];
+  const headers = ["participantId", "age", "gender", "difficulty", "mode", "game", "turn", "participantRow", "participantCol", "aiRow", "aiCol", "participantMove", "aiPreview", "aiChosenMove", "risk", "goalDistance", "aiDistance", "reactionTimeMs", "reactionTimeSeconds", "totalElapsedMs", "totalElapsedSeconds", "result", "timestamp"];
   const csv = [headers.join(",")]
     .concat(rows.map((row) => headers.map((h) => JSON.stringify(row[h] ?? "")).join(",")))
     .join("\n");
@@ -135,12 +135,17 @@ export default function App() {
   const [losses, setLosses] = useState(0);
   const [modal, setModal] = useState(null);
   const [feedback, setFeedback] = useState("");
+  const [turnStartedAt, setTurnStartedAt] = useState(Date.now());
+  const [gameStartedAt, setGameStartedAt] = useState(Date.now());
+  const [now, setNow] = useState(Date.now());
 
   const settings = DIFFICULTY[difficulty];
   const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
   const aiOptions = useMemo(() => aiMoveOptions(ai, player, walls, settings), [ai, player, walls, settings]);
   const playerOptions = useMemo(() => possiblePlayerMoves(player, ai, walls), [player, ai, walls]);
   const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
+  const currentReactionSeconds = Math.round((now - turnStartedAt) / 1000);
+  const totalElapsedSeconds = Math.round((now - gameStartedAt) / 1000);
 
   function resetLevel(nextGame = game) {
     setGame(nextGame);
@@ -150,6 +155,7 @@ export default function App() {
     setAi(AI_START);
     setResult(null);
     setMessage("Study the guardian preview, then choose your route.");
+    setTurnStartedAt(Date.now());
   }
 
   function startSession(selectedMode = "Experiment") {
@@ -163,6 +169,8 @@ export default function App() {
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
+    setGameStartedAt(Date.now());
+    setTurnStartedAt(Date.now());
 
     if (selectedMode === "Experiment") {
       setScreen("consent");
@@ -179,6 +187,8 @@ export default function App() {
     setAi(AI_START);
     setResult(null);
     setMessage("Study the guardian preview, then choose your route.");
+    setGameStartedAt(Date.now());
+    setTurnStartedAt(Date.now());
     setScreen("game");
   }
 
@@ -202,6 +212,11 @@ export default function App() {
 
   function movePlayer(target) {
     if (result || screen !== "game") return;
+
+    const moveTime = Date.now();
+    const reactionTimeMs = moveTime - turnStartedAt;
+    const totalElapsedMs = moveTime - gameStartedAt;
+
     const aiPreview = aiOptions.map((o) => `${o.label} ${o.probability}%`).join(" | ");
     const chosenAi = chooseWeighted(aiOptions);
     const nextPlayer = { r: target.r, c: target.c };
@@ -217,15 +232,45 @@ export default function App() {
     }
     if (status === "playing" && turn >= settings.maxTurns) status = "timeout";
 
-    const row = { participantId, age, gender, difficulty, mode, game, turn, participantRow: nextPlayer.r, participantCol: nextPlayer.c, aiRow: nextAi.r, aiCol: nextAi.c, participantMove: target.move, aiPreview, aiChosenMove, risk: target.risk, goalDistance: target.distanceToGoal, aiDistance: target.distanceFromAI, result: status, timestamp: new Date().toISOString() };
+    const row = {
+      participantId,
+      age,
+      gender,
+      difficulty,
+      mode,
+      game,
+      turn,
+      participantRow: nextPlayer.r,
+      participantCol: nextPlayer.c,
+      aiRow: nextAi.r,
+      aiCol: nextAi.c,
+      participantMove: target.move,
+      aiPreview,
+      aiChosenMove,
+      risk: target.risk,
+      goalDistance: target.distanceToGoal,
+      aiDistance: target.distanceFromAI,
+      reactionTimeMs,
+      reactionTimeSeconds: (reactionTimeMs / 1000).toFixed(2),
+      totalElapsedMs,
+      totalElapsedSeconds: (totalElapsedMs / 1000).toFixed(2),
+      result: status,
+      timestamp: new Date().toISOString()
+    };
     setLogs((oldLogs) => [...oldLogs, row]);
     setPlayer(nextPlayer);
     setAi(nextAi);
     setTurn((t) => t + 1);
+    setTurnStartedAt(Date.now());
 
     if (status !== "playing") finishGame(status);
     else setMessage(`You moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
   }
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -413,6 +458,7 @@ export default function App() {
               <div className="smallCaps">{mode} Mode</div>
               <h1>Temple Maze</h1>
               <p>Game {game} of {totalGames} · Turn {turn} of {settings.maxTurns} · {difficulty}</p>
+              <p className="timerLine">⏱️ Total: {totalElapsedSeconds}s · Current decision: {currentReactionSeconds}s</p>
             </div>
             <button className="secondaryButton" onClick={() => resetLevel(game)}>Restart Level</button>
           </div>
