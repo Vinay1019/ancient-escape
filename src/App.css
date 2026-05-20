@@ -734,3 +734,171 @@ button {
   font-weight: 800;
   color: #305f9f !important;
 }
+
+.adminPage {
+  background:
+    radial-gradient(circle at top, rgba(255, 196, 87, 0.32), transparent 35%),
+    linear-gradient(135deg, #120c08, #4a2b11);
+}
+
+.adminShell {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+  padding: 30px;
+}
+
+.adminHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.adminHeader h1 {
+  margin: 8px 0;
+  font-size: 42px;
+  color: #9b3d3a;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.adminHeader p {
+  color: #5d4a38;
+}
+
+.adminLoginBox {
+  background: #fff4d8;
+  border: 1px solid #e0b84d;
+  border-radius: 20px;
+  padding: 24px;
+  margin-top: 20px;
+}
+
+.dangerBox {
+  background: #fde4df;
+  border-color: #d33a28;
+}
+
+.adminUserRow {
+  background: #fff4d8;
+  border: 1px solid #e0b84d;
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 20px;
+}
+
+.adminActions {
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.adminStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin: 22px 0;
+}
+
+.adminStatsGrid div {
+  background: white;
+  border: 1px solid #dfc68a;
+  border-radius: 18px;
+  padding: 18px;
+  text-align: center;
+}
+
+.adminStatsGrid strong {
+  display: block;
+  font-size: 28px;
+  color: #9b3d3a;
+}
+
+.adminStatsGrid span {
+  display: block;
+  margin-top: 6px;
+  color: #5d4a38;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.adminTableWrap {
+  overflow-x: auto;
+  background: white;
+  border: 1px solid #dfc68a;
+  border-radius: 18px;
+}
+
+.adminTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.adminTable th,
+.adminTable td {
+  padding: 12px;
+  border-bottom: 1px solid #eadcc9;
+  text-align: left;
+  font-size: 14px;
+}
+
+.adminTable th {
+  background: #fff4d8;
+  color: #6b3b10;
+}
+
+.adminError {
+  margin-top: 16px;
+  background: #fde4df;
+  color: #9f2819;
+  padding: 14px;
+  border-radius: 14px;
+  font-weight: 800;
+}
+
+.adminNote {
+  color: #5d4a38;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .adminHeader {
+    flex-direction: column;
+  }
+
+  .adminStatsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+
+.quickSetup input,
+.quickSetup select,
+.quickSetup textarea {
+  color: #2f281d !important;
+  background-color: rgba(255, 255, 245, 0.96) !important;
+  -webkit-text-fill-color: #2f281d !important;
+  opacity: 1 !important;
+}
+
+.quickSetup input::placeholder {
+  color: #7a6a55 !important;
+  opacity: 1 !important;
+}
+
+.quickSetup select option {
+  color: #2f281d;
+  background-color: #fffdf0;
+}
+
+input,
+select,
+textarea {
+  color: #2f281d !important;
+  -webkit-text-fill-color: #2f281d !important;
+}
+
+input::placeholder {
+  color: #7a6a55 !important;
+  opacity: 1 !important;
+}

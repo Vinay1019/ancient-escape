@@ -1,6 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
-import { saveMoveToFirebase } from "./firebase";
+import {
+  saveMoveToFirebase,
+  signInAdmin,
+  signOutAdmin,
+  listenToAuth,
+  isAdminUser,
+  getAllMoveRecords,
+} from "./firebase";
 
 const GRID_SIZE = 9;
 const GAMES_PER_SESSION = 3;
@@ -136,6 +143,11 @@ export default function App() {
   const [losses, setLosses] = useState(0);
   const [modal, setModal] = useState(null);
   const [feedback, setFeedback] = useState("");
+  const [isAdminRoute] = useState(() => window.location.pathname === "/admin");
+  const [adminUser, setAdminUser] = useState(null);
+  const [adminRows, setAdminRows] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState("");
   const [turnStartedAt, setTurnStartedAt] = useState(Date.now());
   const [gameStartedAt, setGameStartedAt] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
@@ -149,6 +161,37 @@ export default function App() {
   const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
   const currentReactionSeconds = Math.round((now - turnStartedAt) / 1000);
   const totalElapsedSeconds = Math.round((now - gameStartedAt) / 1000);
+
+  const adminStats = useMemo(() => {
+    const sessionIds = new Set(adminRows.map((row) => row.sessionId).filter(Boolean));
+    const participantIds = new Set(adminRows.map((row) => row.participantId).filter(Boolean));
+    const finalRows = adminRows.filter((row) => ["escaped", "caught", "timeout"].includes(row.result));
+    const escapes = finalRows.filter((row) => row.result === "escaped").length;
+    const failed = finalRows.filter((row) => row.result === "caught" || row.result === "timeout").length;
+    const reactionValues = adminRows
+      .map((row) => Number(row.reactionTimeMs))
+      .filter((value) => Number.isFinite(value));
+    const avgReactionMs = reactionValues.length
+      ? Math.round(reactionValues.reduce((sum, value) => sum + value, 0) / reactionValues.length)
+      : 0;
+
+    return {
+      totalMoves: adminRows.length,
+      totalSessions: sessionIds.size,
+      totalParticipants: participantIds.size,
+      escapes,
+      failed,
+      avgReactionSeconds: (avgReactionMs / 1000).toFixed(2),
+    };
+  }, [adminRows]);
+
+  useEffect(() => {
+    const unsubscribe = listenToAuth((user) => {
+      setAdminUser(user);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (logs.length === 0) return;
@@ -313,6 +356,47 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [playerOptions, result, screen]);
 
+  function downloadAdminRows() {
+    if (adminRows.length === 0) {
+      alert("No Firebase records loaded yet.");
+      return;
+    }
+
+    downloadCSV(adminRows);
+  }
+
+  async function loadAdminRows() {
+    setAdminError("");
+    setAdminLoading(true);
+
+    try {
+      const rows = await getAllMoveRecords();
+      setAdminRows(rows);
+    } catch (error) {
+      console.error("Admin load failed:", error);
+      setAdminError("Unable to load Firebase data. Check login and Firestore rules.");
+    } finally {
+      setAdminLoading(false);
+    }
+  }
+
+  async function handleAdminSignIn() {
+    setAdminError("");
+
+    try {
+      const user = await signInAdmin();
+      if (!isAdminUser(user)) {
+        setAdminError("This Google account is not allowed to access the admin dashboard.");
+        await signOutAdmin();
+        return;
+      }
+      await loadAdminRows();
+    } catch (error) {
+      console.error("Admin sign-in failed:", error);
+      setAdminError("Admin sign-in failed.");
+    }
+  }
+
   function downloadSavedSessions() {
     const savedSessions = JSON.parse(localStorage.getItem("ancientEscapeSessions") || "[]");
     const allRows = savedSessions.flatMap((session) => session.rows || []);
@@ -344,6 +428,102 @@ export default function App() {
     if (same(p, ai)) return "🛡️";
     if (same(p, GOAL)) return "🏁";
     return "";
+  }
+
+  if (isAdminRoute) {
+    const allowedAdmin = isAdminUser(adminUser);
+
+    return (
+      <div className="page adminPage">
+        <div className="adminShell premiumPanel lightPanel">
+          <div className="adminHeader">
+            <div>
+              <div className="badge darkBadge">Admin Dashboard</div>
+              <h1>Ancient Escape Data</h1>
+              <p>View Firebase records and export gameplay data.</p>
+            </div>
+            <button className="secondaryButton" onClick={() => window.location.href = "/"}>Back to App</button>
+          </div>
+
+          {!adminUser && (
+            <div className="adminLoginBox">
+              <h2>Admin Login Required</h2>
+              <p>Sign in with the authorized Google account to view collected data.</p>
+              <button className="primaryButton" onClick={handleAdminSignIn}>Sign in with Google</button>
+            </div>
+          )}
+
+          {adminUser && !allowedAdmin && (
+            <div className="adminLoginBox dangerBox">
+              <h2>Access Denied</h2>
+              <p>{adminUser.email} is not allowed to access this dashboard.</p>
+              <button className="secondaryButton" onClick={signOutAdmin}>Sign out</button>
+            </div>
+          )}
+
+          {adminUser && allowedAdmin && (
+            <>
+              <div className="adminUserRow">
+                <span>Signed in as <b>{adminUser.email}</b></span>
+                <div className="buttonRow adminActions">
+                  <button className="primaryButton" onClick={loadAdminRows} disabled={adminLoading}>{adminLoading ? "Loading..." : "Refresh Data"}</button>
+                  <button className="secondaryButton" onClick={downloadAdminRows}>Download CSV</button>
+                  <button className="secondaryButton" onClick={signOutAdmin}>Sign Out</button>
+                </div>
+              </div>
+
+              <div className="adminStatsGrid">
+                <div><strong>{adminStats.totalMoves}</strong><span>Total Moves</span></div>
+                <div><strong>{adminStats.totalSessions}</strong><span>Sessions</span></div>
+                <div><strong>{adminStats.totalParticipants}</strong><span>Participants</span></div>
+                <div><strong>{adminStats.escapes}</strong><span>Escapes</span></div>
+                <div><strong>{adminStats.failed}</strong><span>Caught / Timeout</span></div>
+                <div><strong>{adminStats.avgReactionSeconds}s</strong><span>Avg Reaction</span></div>
+              </div>
+
+              <div className="adminTableWrap">
+                <table className="adminTable">
+                  <thead>
+                    <tr>
+                      <th>Participant</th>
+                      <th>Mode</th>
+                      <th>Difficulty</th>
+                      <th>Game</th>
+                      <th>Turn</th>
+                      <th>Move</th>
+                      <th>AI Move</th>
+                      <th>Risk</th>
+                      <th>Reaction</th>
+                      <th>Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminRows.slice(0, 100).map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.participantId}</td>
+                        <td>{row.mode}</td>
+                        <td>{row.difficulty}</td>
+                        <td>{row.game}</td>
+                        <td>{row.turn}</td>
+                        <td>{row.participantMove}</td>
+                        <td>{row.aiChosenMove}</td>
+                        <td>{row.risk}</td>
+                        <td>{row.reactionTimeSeconds}s</td>
+                        <td>{row.result}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {adminRows.length > 100 && <p className="adminNote">Showing latest 100 rows. Use Download CSV for all loaded records.</p>}
+            </>
+          )}
+
+          {adminError && <div className="adminError">{adminError}</div>}
+        </div>
+      </div>
+    );
   }
 
   if (screen === "welcome") {
