@@ -1,5 +1,21 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
+
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -11,7 +27,11 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+
+export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL;
 
 export async function saveMoveToFirebase(moveData) {
   try {
@@ -25,4 +45,32 @@ export async function saveMoveToFirebase(moveData) {
     console.error("Firebase save failed:", error);
     return false;
   }
+}
+
+export async function signInAdmin() {
+  const provider = new GoogleAuthProvider();
+  const result = await signInWithPopup(auth, provider);
+  return result.user;
+}
+
+export async function signOutAdmin() {
+  await signOut(auth);
+}
+
+export function listenToAuth(callback) {
+  return onAuthStateChanged(auth, callback);
+}
+
+export function isAdminUser(user) {
+  return user?.email === ADMIN_EMAIL;
+}
+
+export async function getAllMoveRecords() {
+  const q = query(collection(db, "ancient_escape_moves"), orderBy("createdAt", "desc"));
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
 }
