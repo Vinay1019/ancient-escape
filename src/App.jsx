@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
+import { saveMoveToFirebase } from "./firebase";
 
 const GRID_SIZE = 9;
 const GAMES_PER_SESSION = 3;
@@ -139,6 +140,7 @@ export default function App() {
   const [gameStartedAt, setGameStartedAt] = useState(Date.now());
   const [now, setNow] = useState(Date.now());
   const [sessionId, setSessionId] = useState(() => `AE-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
+  const [onlineSaveStatus, setOnlineSaveStatus] = useState("Ready");
 
   const settings = DIFFICULTY[difficulty];
   const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
@@ -231,7 +233,7 @@ export default function App() {
     }, 1100);
   }
 
-  function movePlayer(target) {
+  async function movePlayer(target) {
     if (result || screen !== "game") return;
 
     const moveTime = Date.now();
@@ -279,11 +281,17 @@ export default function App() {
       result: status,
       timestamp: new Date().toISOString()
     };
+
     setLogs((oldLogs) => [...oldLogs, row]);
     setPlayer(nextPlayer);
     setAi(nextAi);
     setTurn((t) => t + 1);
     setTurnStartedAt(Date.now());
+
+    setOnlineSaveStatus("Saving...");
+    saveMoveToFirebase(row).then((saved) => {
+      setOnlineSaveStatus(saved ? "Saved online" : "Local only");
+    });
 
     if (status !== "playing") finishGame(status);
     else setMessage(`You moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
@@ -511,6 +519,7 @@ export default function App() {
               <h1>Temple Maze</h1>
               <p>Game {game} of {totalGames} · Turn {turn} of {settings.maxTurns} · {difficulty}</p>
               <p className="timerLine">⏱️ Total: {totalElapsedSeconds}s · Current decision: {currentReactionSeconds}s</p>
+              <p className="saveStatusLine">☁️ Online save: {onlineSaveStatus}</p>
             </div>
             <button className="secondaryButton" onClick={() => resetLevel(game)}>Restart Level</button>
           </div>
