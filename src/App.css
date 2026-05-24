@@ -1265,3 +1265,16 @@ input::placeholder {
   font-weight: 800;
   line-height: 1.35;
 }
+
+
+/* Guardian protect-goal strategy */
+.guardianMoveBox b {
+  color: #ffffff;
+}
+
+.protectStrategyNote {
+  margin-top: 10px;
+  color: #fff4d8;
+  font-size: 13px;
+  opacity: 0.9;
+}

@@ -386,6 +386,83 @@ function chooseGuardianRoute(routes) {
   return Math.random() < 0.75 ? topRoutes[0] : topRoutes[1];
 }
 
+
+function shortestDistance(start, goal, walls) {
+  if (same(start, goal)) return 0;
+
+  const q = [{ pos: start, distance: 0 }];
+  const seen = new Set([keyOf(start)]);
+
+  while (q.length > 0) {
+    const current = q.shift();
+
+    for (const n of neighbors(current.pos, walls)) {
+      const k = keyOf(n);
+
+      if (seen.has(k)) continue;
+      if (same(n, goal)) return current.distance + 1;
+
+      seen.add(k);
+      q.push({ pos: { r: n.r, c: n.c }, distance: current.distance + 1 });
+    }
+  }
+
+  return 999;
+}
+
+function getBlockingScore(position, participant, walls) {
+  const participantGoalDistance = shortestDistance(participant, GOAL, walls);
+  const participantToGuardianDistance = shortestDistance(participant, position, walls);
+  const guardianToGoalDistance = shortestDistance(position, GOAL, walls);
+
+  return participantToGuardianDistance + guardianToGoalDistance + Math.abs(guardianToGoalDistance - participantGoalDistance);
+}
+
+function chooseGuardianProtectRoute(routes, participantTarget, walls) {
+  if (!routes.length) {
+    return {
+      route: null,
+      strategy: "No route",
+      captureChance: 0,
+      blockChance: 0,
+      alternativeChance: 100,
+    };
+  }
+
+  const captureRoutes = routes.filter((route) => route.isCapture);
+  const defensiveRoutes = routes
+    .map((route) => ({
+      ...route,
+      blockingScore: getBlockingScore({ r: route.r, c: route.c }, participantTarget, walls),
+    }))
+    .sort((a, b) => a.blockingScore - b.blockingScore || a.distanceToPlayer - b.distanceToPlayer);
+
+  if (captureRoutes.length > 0) {
+    const shouldCapture = Math.random() < 0.75;
+
+    return {
+      route: shouldCapture ? captureRoutes[0] : defensiveRoutes[0],
+      strategy: shouldCapture ? "Capture" : "Protect goal path",
+      captureChance: 75,
+      blockChance: 25,
+      alternativeChance: 0,
+    };
+  }
+
+  const shouldBlock = Math.random() < 0.8;
+  const topAlternative = routes
+    .slice()
+    .sort((a, b) => a.distanceToPlayer - b.distanceToPlayer)[0];
+
+  return {
+    route: shouldBlock ? defensiveRoutes[0] : topAlternative,
+    strategy: shouldBlock ? "Protect goal path" : "Move closer",
+    captureChance: 0,
+    blockChance: 80,
+    alternativeChance: 20,
+  };
+}
+
 function downloadCSV(rows) {
   const headers = [
     "sessionId",
@@ -409,6 +486,7 @@ function downloadCSV(rows) {
     "guardianDiceRoll",
     "guardianStepsMoved",
     "guardianMoveRoute",
+    "guardianStrategy",
     "participantRow",
     "participantCol",
     "aiRow",
@@ -678,10 +756,13 @@ export default function App() {
       guardianDiceRoll
     );
 
-    const chosenGuardianRoute = chooseGuardianRoute(guardianRoutes);
-    const capturePossible = guardianRoutes.some((route) => route.isCapture);
-    const guardianCaptureChance = capturePossible ? 85 : 0;
-    const guardianAlternativeChance = capturePossible ? 15 : 100;
+    const guardianDecision = chooseGuardianProtectRoute(
+      guardianRoutes,
+      nextPlayerBeforeGuardian,
+      walls
+    );
+
+    const chosenGuardianRoute = guardianDecision.route;
 
     let finalPlayer = nextPlayerBeforeGuardian;
     let nextAi = ai;
@@ -692,6 +773,7 @@ export default function App() {
     let nextCaptureCount = captureCount;
     let guardianStepsMoved = 0;
     let guardianMoveRoute = "No available route";
+    let guardianStrategy = guardianDecision.strategy;
 
     if (same(nextPlayerBeforeGuardian, GOAL)) {
       status = "escaped";
@@ -703,16 +785,20 @@ export default function App() {
       guardianStepsMoved = chosenGuardianRoute.stepsMoved || 0;
       guardianMoveRoute = chosenGuardianRoute.move || "Move";
 
-      setGuardianDiceValue(guardianDiceRoll);
-      setLastGuardianMove(guardianMoveRoute);
-
       if (same(nextAi, nextPlayerBeforeGuardian)) {
         capturedThisTurn = true;
         participantResetToStart = true;
         nextCaptureCount = captureCount + 1;
+
         finalPlayer = PARTICIPANT_START;
+        nextAi = AI_START;
+        guardianMoveRoute = `${guardianMoveRoute} → reset to start`;
+        guardianStrategy = "Capture and reset";
         status = "playing";
       }
+
+      setGuardianDiceValue(guardianDiceRoll);
+      setLastGuardianMove(guardianMoveRoute);
     } else {
       setGuardianDiceValue(guardianDiceRoll);
       setLastGuardianMove("No route available");
@@ -722,9 +808,10 @@ export default function App() {
       status = "timeout";
     }
 
-    const aiPreview = capturePossible
-      ? `Guardian rolled ${guardianDiceRoll}. Capture route ${guardianCaptureChance}% | Alternative route ${guardianAlternativeChance}%`
-      : `Guardian rolled ${guardianDiceRoll}. No direct capture route | Alternative route ${guardianAlternativeChance}%`;
+    const aiPreview =
+      guardianDecision.captureChance > 0
+        ? `Guardian rolled ${guardianDiceRoll}. Capture ${guardianDecision.captureChance}% | Protect goal ${guardianDecision.blockChance}%`
+        : `Guardian rolled ${guardianDiceRoll}. Protect goal ${guardianDecision.blockChance}% | Move closer ${guardianDecision.alternativeChance}%`;
 
     const row = {
       sessionId,
@@ -743,11 +830,12 @@ export default function App() {
       capturedThisTurn,
       captureCount: nextCaptureCount,
       participantResetToStart,
-      guardianCaptureChance,
-      guardianAlternativeChance,
+      guardianCaptureChance: guardianDecision.captureChance,
+      guardianAlternativeChance: guardianDecision.alternativeChance,
       guardianDiceRoll,
       guardianStepsMoved,
       guardianMoveRoute,
+      guardianStrategy,
       participantRow: finalPlayer.r,
       participantCol: finalPlayer.c,
       aiRow: nextAi.r,
@@ -785,7 +873,11 @@ export default function App() {
       finishGame(status);
     } else if (capturedThisTurn) {
       setMessage(
-        `Guardian rolled ${guardianDiceRoll}, captured ${participantInitials}, and sent ${participantInitials} back to start. Roll again.`
+        `Guardian rolled ${guardianDiceRoll}, captured ${participantInitials}, and both ${participantInitials} and Guardian returned to start. Roll again.`
+      );
+    } else if (guardianStrategy === "Protect goal path") {
+      setMessage(
+        `${participantInitials} moved ${target.stepsMoved || diceValue} steps. Guardian rolled ${guardianDiceRoll} and moved to protect the goal path. Roll again.`
       );
     } else {
       setMessage(
@@ -1212,7 +1304,7 @@ export default function App() {
                   <p>
                     Reach 🏁 while avoiding the Guardian 🛡️. If the Guardian captures you, your character returns to the start.
                   </p>
-                  <p>Roll the dice, choose a route, and watch the Guardian choose between a capture route and an alternative route.</p>
+                  <p>Roll the dice, choose a route, and watch the Guardian either capture you or protect the goal path.</p>
                   <p>You can use highlighted cells, move buttons, or keyboard arrow keys.</p>
                 </>
               )}
@@ -1298,7 +1390,7 @@ export default function App() {
           <div className="instructionGrid">
             <div><strong>{participantEmoji} Your role</strong><span>Move through the maze and reach the goal.</span></div>
             <div><strong>🏁 Goal</strong><span>Escape before the Guardian catches you.</span></div>
-            <div><strong>🛡️ Guardian</strong><span>The Guardian moves after every turn and sends you back to start if captured.</span></div>
+            <div><strong>🛡️ Guardian</strong><span>The Guardian protects the goal path. If captured, both you and Guardian return to start.</span></div>
             <div><strong>📊 Probability</strong><span>Two likely Guardian moves are shown before you choose.</span></div>
             <div><strong>⚠️ Risk</strong><span>Some faster routes may be more dangerous.</span></div>
             <div><strong>🎲 Dice</strong><span>Roll the dice, then choose one highlighted route.</span></div>
@@ -1409,8 +1501,8 @@ export default function App() {
 
         <aside className="sidePanel">
           <section className="panelCard premiumPanel darkPanel">
-            <h2>Guardian Auto Dice</h2>
-            <p>After {participantInitials || "the participant"} moves, Guardian rolls automatically and chases.</p>
+            <h2>Guardian Protection Strategy</h2>
+            <p>After {participantInitials || "the participant"} moves, Guardian rolls automatically to capture or protect the goal path.</p>
 
             <div className="guardianDicePanel">
               <div className="guardianDiceValue">{guardianDiceValue || "🎲"}</div>
@@ -1430,7 +1522,7 @@ export default function App() {
 
             <div className="probBox">
               <div className="probHeader">
-                <span>↔️ Alternative route</span>
+                <span>🏁 Protect goal path</span>
                 <b>{guardianStats.alternativeChance}%</b>
               </div>
               <div className="bar"><div style={{ width: `${guardianStats.alternativeChance}%` }} /></div>
