@@ -502,6 +502,8 @@ function downloadCSV(rows) {
     "totalElapsedMs",
     "totalElapsedSeconds",
     "result",
+    "roundWinner",
+    "roundEndReason",
     "timestamp",
   ];
 
@@ -539,6 +541,9 @@ export default function App() {
   const [logs, setLogs] = useState([]);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
+  const [lastRoundWinner, setLastRoundWinner] = useState("");
+  const [lastRoundReason, setLastRoundReason] = useState("");
+  const [lastRoundGame, setLastRoundGame] = useState(null);
   const [modal, setModal] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [isAdminRoute] = useState(() => window.location.pathname === "/admin");
@@ -671,6 +676,9 @@ export default function App() {
     setWins(0);
     setLosses(0);
     setCaptureCount(0);
+    setLastRoundWinner("");
+    setLastRoundReason("");
+    setLastRoundGame(null);
     setTurn(1);
     setGame(1);
     setWalls(createWalls(1, settings.wallCount));
@@ -711,21 +719,51 @@ export default function App() {
   function finishGame(status) {
     setResult(status);
 
+    let winner = "";
+    let reason = "";
+    let finalMessage = "";
+
     if (status === "escaped") {
+      winner = "Participant";
+      reason = `${participantInitials} reached the goal`;
+      finalMessage = `${participantInitials} reached the goal and wins Round ${game}!`;
       setWins((w) => w + 1);
-      setMessage("Victory! You escaped the ancient maze.");
-    } else if (status === "caught") {
+    } else if (status === "participant_killed_guardian") {
+      winner = "Participant";
+      reason = `${participantInitials} captured the Guardian`;
+      finalMessage = `${participantInitials} captured the Guardian and wins Round ${game}!`;
+      setWins((w) => w + 1);
+    } else if (status === "guardian_killed_participant") {
+      winner = "Guardian";
+      reason = `Guardian captured ${participantInitials}`;
+      finalMessage = `Guardian captured ${participantInitials} and wins Round ${game}!`;
       setLosses((l) => l + 1);
-      setMessage("The Guardian caught you. Analyze the safer route next time.");
     } else {
+      winner = "Guardian";
+      reason = "Guardian protected the temple until the turn limit";
+      finalMessage = `Guardian protected the temple and wins Round ${game}!`;
       setLosses((l) => l + 1);
-      setMessage("Turn limit reached. The temple doors closed.");
     }
 
-    setTimeout(() => {
-      if (game >= totalGames) setScreen("summary");
-      else resetLevel(game + 1);
-    }, 1100);
+    setLastRoundWinner(winner);
+    setLastRoundReason(reason);
+    setLastRoundGame(game);
+    setMessage(finalMessage);
+    setScreen("roundComplete");
+  }
+
+  function continueAfterRound() {
+    if (game >= totalGames) {
+      setScreen("summary");
+      return;
+    }
+
+    resetLevel(game + 1);
+    setScreen("game");
+  }
+
+  function quitSession() {
+    setScreen("summary");
   }
 
   function rollDice() {
@@ -748,70 +786,98 @@ export default function App() {
 
     const nextPlayerBeforeGuardian = { r: target.r, c: target.c };
 
-    const guardianDiceRoll = Math.floor(Math.random() * 6) + 1;
-    const guardianRoutes = possibleGuardianDiceMoves(
-      ai,
-      nextPlayerBeforeGuardian,
-      walls,
-      guardianDiceRoll
-    );
-
-    const guardianDecision = chooseGuardianProtectRoute(
-      guardianRoutes,
-      nextPlayerBeforeGuardian,
-      walls
-    );
-
-    const chosenGuardianRoute = guardianDecision.route;
-
     let finalPlayer = nextPlayerBeforeGuardian;
     let nextAi = ai;
     let status = "playing";
+    let roundWinner = "";
+    let roundEndReason = "";
     let aiChosenMove = "No move";
     let capturedThisTurn = false;
     let participantResetToStart = false;
     let nextCaptureCount = captureCount;
+    let guardianDiceRoll = 0;
     let guardianStepsMoved = 0;
-    let guardianMoveRoute = "No available route";
-    let guardianStrategy = guardianDecision.strategy;
+    let guardianMoveRoute = "Guardian did not move";
+    let guardianStrategy = "Waiting";
+    let guardianCaptureChance = 0;
+    let guardianAlternativeChance = 100;
+    let aiPreview = "Guardian did not move";
 
-    if (same(nextPlayerBeforeGuardian, GOAL)) {
+    // Participant can capture/kill Guardian by landing on Guardian.
+    // In that case the round ends immediately and participant wins the round.
+    if (same(nextPlayerBeforeGuardian, ai)) {
+      status = "participant_killed_guardian";
+      roundWinner = "Participant";
+      roundEndReason = "Participant captured Guardian";
+      aiChosenMove = "None";
+      guardianStrategy = "Captured by participant";
+      aiPreview = "Participant landed on Guardian. Participant wins this round.";
+      setGuardianDiceValue(null);
+      setLastGuardianMove("Captured by participant");
+    } else if (same(nextPlayerBeforeGuardian, GOAL)) {
       status = "escaped";
+      roundWinner = "Participant";
+      roundEndReason = "Participant reached goal";
+      aiChosenMove = "None";
+      guardianStrategy = "Goal reached";
+      aiPreview = "Participant reached the goal. Participant wins this round.";
       setGuardianDiceValue(null);
       setLastGuardianMove("Guardian did not move because goal was reached");
-    } else if (chosenGuardianRoute) {
-      nextAi = { r: chosenGuardianRoute.r, c: chosenGuardianRoute.c };
-      aiChosenMove = chosenGuardianRoute.move || "Move";
-      guardianStepsMoved = chosenGuardianRoute.stepsMoved || 0;
-      guardianMoveRoute = chosenGuardianRoute.move || "Move";
+    } else {
+      guardianDiceRoll = Math.floor(Math.random() * 6) + 1;
+      const guardianRoutes = possibleGuardianDiceMoves(
+        ai,
+        nextPlayerBeforeGuardian,
+        walls,
+        guardianDiceRoll
+      );
 
-      if (same(nextAi, nextPlayerBeforeGuardian)) {
-        capturedThisTurn = true;
-        participantResetToStart = true;
-        nextCaptureCount = captureCount + 1;
+      const guardianDecision = chooseGuardianProtectRoute(
+        guardianRoutes,
+        nextPlayerBeforeGuardian,
+        walls
+      );
 
-        finalPlayer = PARTICIPANT_START;
-        nextAi = AI_START;
-        guardianMoveRoute = `${guardianMoveRoute} → reset to start`;
-        guardianStrategy = "Capture and reset";
-        status = "playing";
+      const chosenGuardianRoute = guardianDecision.route;
+      guardianStrategy = guardianDecision.strategy;
+      guardianCaptureChance = guardianDecision.captureChance;
+      guardianAlternativeChance = guardianDecision.alternativeChance;
+
+      if (chosenGuardianRoute) {
+        nextAi = { r: chosenGuardianRoute.r, c: chosenGuardianRoute.c };
+        aiChosenMove = chosenGuardianRoute.move || "Move";
+        guardianStepsMoved = chosenGuardianRoute.stepsMoved || 0;
+        guardianMoveRoute = chosenGuardianRoute.move || "Move";
+
+        // Guardian captures/kills Participant by landing on Participant.
+        // The round ends immediately and Guardian wins the round.
+        if (same(nextAi, nextPlayerBeforeGuardian)) {
+          capturedThisTurn = true;
+          nextCaptureCount = captureCount + 1;
+          status = "guardian_killed_participant";
+          roundWinner = "Guardian";
+          roundEndReason = "Guardian captured participant";
+          guardianStrategy = "Capture";
+        }
+
+        setGuardianDiceValue(guardianDiceRoll);
+        setLastGuardianMove(guardianMoveRoute);
+      } else {
+        setGuardianDiceValue(guardianDiceRoll);
+        setLastGuardianMove("No route available");
       }
 
-      setGuardianDiceValue(guardianDiceRoll);
-      setLastGuardianMove(guardianMoveRoute);
-    } else {
-      setGuardianDiceValue(guardianDiceRoll);
-      setLastGuardianMove("No route available");
-    }
+      if (status === "playing" && turn >= settings.maxTurns) {
+        status = "timeout";
+        roundWinner = "Guardian";
+        roundEndReason = "Guardian protected temple until turn limit";
+      }
 
-    if (status === "playing" && turn >= settings.maxTurns) {
-      status = "timeout";
+      aiPreview =
+        guardianCaptureChance > 0
+          ? `Guardian rolled ${guardianDiceRoll}. Capture ${guardianCaptureChance}% | Protect goal ${guardianDecision.blockChance}%`
+          : `Guardian rolled ${guardianDiceRoll}. Protect goal ${guardianDecision.blockChance}% | Move closer ${guardianAlternativeChance}%`;
     }
-
-    const aiPreview =
-      guardianDecision.captureChance > 0
-        ? `Guardian rolled ${guardianDiceRoll}. Capture ${guardianDecision.captureChance}% | Protect goal ${guardianDecision.blockChance}%`
-        : `Guardian rolled ${guardianDiceRoll}. Protect goal ${guardianDecision.blockChance}% | Move closer ${guardianDecision.alternativeChance}%`;
 
     const row = {
       sessionId,
@@ -830,8 +896,8 @@ export default function App() {
       capturedThisTurn,
       captureCount: nextCaptureCount,
       participantResetToStart,
-      guardianCaptureChance: guardianDecision.captureChance,
-      guardianAlternativeChance: guardianDecision.alternativeChance,
+      guardianCaptureChance,
+      guardianAlternativeChance,
       guardianDiceRoll,
       guardianStepsMoved,
       guardianMoveRoute,
@@ -851,6 +917,8 @@ export default function App() {
       totalElapsedMs,
       totalElapsedSeconds: (totalElapsedMs / 1000).toFixed(2),
       result: status,
+      roundWinner,
+      roundEndReason,
       timestamp: new Date().toISOString(),
     };
 
@@ -871,10 +939,6 @@ export default function App() {
 
     if (status !== "playing") {
       finishGame(status);
-    } else if (capturedThisTurn) {
-      setMessage(
-        `Guardian rolled ${guardianDiceRoll}, captured ${participantInitials}, and both ${participantInitials} and Guardian returned to start. Roll again.`
-      );
     } else if (guardianStrategy === "Protect goal path") {
       setMessage(
         `${participantInitials} moved ${target.stepsMoved || diceValue} steps. Guardian rolled ${guardianDiceRoll} and moved to protect the goal path. Roll again.`
@@ -1051,7 +1115,7 @@ export default function App() {
                 <div><strong>{adminStats.totalMoves}</strong><span>Total Moves</span></div>
                 <div><strong>{adminStats.totalSessions}</strong><span>Sessions</span></div>
                 <div><strong>{adminStats.totalParticipants}</strong><span>Participants</span></div>
-                <div><strong>{adminStats.escapes}</strong><span>Escapes</span></div>
+                <div><strong>{adminStats.escapes}</strong><span>Participant Wins</span></div>
                 <div><strong>{adminStats.failed}</strong><span>Caught / Timeout</span></div>
                 <div><strong>{adminStats.avgReactionSeconds}s</strong><span>Avg Reaction</span></div>
               </div>
@@ -1302,9 +1366,9 @@ export default function App() {
                 <>
                   <h2>How to Play</h2>
                   <p>
-                    Reach 🏁 while avoiding the Guardian 🛡️. If the Guardian captures you, your character returns to the start.
+                    Reach 🏁 while avoiding the Guardian 🛡️. If the Guardian captures you, Guardian wins that round.
                   </p>
-                  <p>Roll the dice, choose a route, and watch the Guardian either capture you or protect the goal path.</p>
+                  <p>Roll the dice, choose a route, and try to capture Guardian or reach the goal before Guardian captures you.</p>
                   <p>You can use highlighted cells, move buttons, or keyboard arrow keys.</p>
                 </>
               )}
@@ -1390,7 +1454,7 @@ export default function App() {
           <div className="instructionGrid">
             <div><strong>{participantEmoji} Your role</strong><span>Move through the maze and reach the goal.</span></div>
             <div><strong>🏁 Goal</strong><span>Escape before the Guardian catches you.</span></div>
-            <div><strong>🛡️ Guardian</strong><span>The Guardian protects the goal path. If captured, both you and Guardian return to start.</span></div>
+            <div><strong>🛡️ Guardian</strong><span>If you land on Guardian, you win the round. If Guardian lands on you, Guardian wins the round.</span></div>
             <div><strong>📊 Probability</strong><span>Two likely Guardian moves are shown before you choose.</span></div>
             <div><strong>⚠️ Risk</strong><span>Some faster routes may be more dangerous.</span></div>
             <div><strong>🎲 Dice</strong><span>Roll the dice, then choose one highlighted route.</span></div>
@@ -1413,6 +1477,47 @@ export default function App() {
     );
   }
 
+  if (screen === "roundComplete") {
+    const hasNextRound = game < totalGames;
+
+    return (
+      <div className="page centerPage">
+        <div className="roundCompleteCard premiumPanel lightPanel">
+          <div className="badge darkBadge">Round {lastRoundGame || game} Complete</div>
+          <h1>{lastRoundWinner} Wins This Round</h1>
+          <p className="roundReason">{lastRoundReason}</p>
+
+          <div className="roundWinnerPanel">
+            <div>
+              <span>Round Winner</span>
+              <strong>{lastRoundWinner}</strong>
+            </div>
+            <div>
+              <span>Current Score</span>
+              <strong>{participantInitials || "Participant"} {wins} - {losses} Guardian</strong>
+            </div>
+          </div>
+
+          <div className="buttonRow">
+            {hasNextRound ? (
+              <button className="primaryButton" onClick={continueAfterRound}>
+                Continue to Round {game + 1}
+              </button>
+            ) : (
+              <button className="primaryButton" onClick={() => setScreen("summary")}>
+                View Final Results
+              </button>
+            )}
+
+            <button className="secondaryButton" onClick={quitSession}>
+              Quit Game
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (screen === "summary") {
     return (
       <div className="page centerPage">
@@ -1422,8 +1527,8 @@ export default function App() {
           <p>{mode} mode complete for {participantInfo.normalizedId || "Practice Player"}.</p>
 
           <div className="scoreGrid">
-            <div className="scoreBox winBox"><strong>{wins}</strong><span>Escapes</span></div>
-            <div className="scoreBox lossBox"><strong>{losses}</strong><span>Timeouts</span></div>
+            <div className="scoreBox winBox"><strong>{wins}</strong><span>Participant Wins</span></div>
+            <div className="scoreBox lossBox"><strong>{losses}</strong><span>Guardian Wins</span></div>
             <div className="scoreBox captureSummaryBox"><strong>{captureCount}</strong><span>Guardian Captures</span></div>
           </div>
 
@@ -1502,7 +1607,7 @@ export default function App() {
         <aside className="sidePanel">
           <section className="panelCard premiumPanel darkPanel">
             <h2>Guardian Protection Strategy</h2>
-            <p>After {participantInitials || "the participant"} moves, Guardian rolls automatically to capture or protect the goal path.</p>
+            <p>After {participantInitials || "the participant"} moves, Guardian rolls automatically. Whoever captures wins the round.</p>
 
             <div className="guardianDicePanel">
               <div className="guardianDiceValue">{guardianDiceValue || "🎲"}</div>
@@ -1558,6 +1663,14 @@ export default function App() {
             <p>🛡️ Guardian</p>
             <p>🏁 Escape Goal</p>
             <p><span className="miniWall" /> Blocked Path</p>
+
+            {lastRoundWinner && (
+              <div className="previousRoundBox">
+                <span>Previous Round</span>
+                <strong>{lastRoundWinner} won Round {lastRoundGame}</strong>
+                <small>{lastRoundReason}</small>
+              </div>
+            )}
           </section>
         </aside>
       </main>

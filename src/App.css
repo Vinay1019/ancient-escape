@@ -1278,3 +1278,106 @@ input::placeholder {
   font-size: 13px;
   opacity: 0.9;
 }
+
+
+/* Round winner kill rule */
+.roundWinnerNote {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #fff4d8;
+  color: #5b4214;
+  font-weight: 900;
+}
+
+
+/* Round completion flow */
+.roundCompleteCard {
+  width: 100%;
+  max-width: 760px;
+  padding: 34px;
+  text-align: center;
+}
+
+.roundCompleteCard h1 {
+  margin: 8px 0 10px;
+  font-size: 42px;
+  color: #9b3d3a;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.roundReason {
+  color: #5d4a38;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.roundWinnerPanel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 26px 0;
+}
+
+.roundWinnerPanel div {
+  background: #fff4d8;
+  border: 1px solid #e0b84d;
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.roundWinnerPanel span {
+  display: block;
+  color: #6b3b10;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.roundWinnerPanel strong {
+  display: block;
+  margin-top: 8px;
+  color: #2f281d;
+  font-size: 22px;
+}
+
+.previousRoundBox {
+  margin-top: 14px;
+  background: #fff4d8;
+  border: 1px solid #e0b84d;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.previousRoundBox span {
+  display: block;
+  color: #8a3a16;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.previousRoundBox strong {
+  display: block;
+  margin-top: 5px;
+  color: #2f281d;
+}
+
+.previousRoundBox small {
+  display: block;
+  margin-top: 5px;
+  color: #5d4a38;
+  line-height: 1.35;
+}
+
+@media (max-width: 650px) {
+  .roundWinnerPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .roundCompleteCard h1 {
+    font-size: 34px;
+  }
+}
