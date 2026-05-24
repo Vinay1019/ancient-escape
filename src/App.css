@@ -902,3 +902,232 @@ input::placeholder {
   color: #7a6a55 !important;
   opacity: 1 !important;
 }
+
+
+.emojiPicker {
+  margin-top: 12px;
+  background: rgba(255, 250, 224, 0.72);
+  border: 1px solid rgba(179, 139, 29, 0.55);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.emojiPickerTitle {
+  font-weight: 900;
+  color: #4b351b;
+  margin-bottom: 10px;
+  text-align: left;
+}
+
+.emojiOptions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.emojiChoice {
+  border: 1px solid #b38b1d;
+  background: #fffbe0;
+  color: #2f281d;
+  border-radius: 14px;
+  padding: 9px 6px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.emojiChoice span {
+  display: block;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.emojiChoice small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+}
+
+.emojiChoice.activeEmoji {
+  background: #9b3d3a;
+  color: white;
+  border-color: #9b3d3a;
+  transform: translateY(-1px);
+}
+
+
+.inputGroup {
+  width: 100%;
+}
+
+.fieldError {
+  margin-top: 6px;
+  color: #9b3d3a;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: left;
+  line-height: 1.3;
+}
+
+.fieldSuccess {
+  margin-top: 6px;
+  color: #1f7a3f;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.mainPlayButton:disabled,
+.menuButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.emojiPicker {
+  margin-top: 12px;
+  background: rgba(255, 250, 224, 0.72);
+  border: 1px solid rgba(179, 139, 29, 0.55);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.emojiPickerTitle {
+  font-weight: 900;
+  color: #4b351b;
+  margin-bottom: 10px;
+  text-align: left;
+}
+
+.emojiOptions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.emojiChoice {
+  border: 1px solid #b38b1d;
+  background: #fffbe0;
+  color: #2f281d;
+  border-radius: 14px;
+  padding: 9px 6px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.emojiChoice span {
+  display: block;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.emojiChoice small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+}
+
+.emojiChoice.activeEmoji {
+  background: #9b3d3a;
+  color: white;
+  border-color: #9b3d3a;
+  transform: translateY(-1px);
+}
+
+.quickSetup input,
+.quickSetup select,
+.quickSetup textarea {
+  color: #2f281d !important;
+  background-color: rgba(255, 255, 245, 0.96) !important;
+  -webkit-text-fill-color: #2f281d !important;
+  opacity: 1 !important;
+}
+
+.quickSetup input::placeholder {
+  color: #7a6a55 !important;
+  opacity: 1 !important;
+}
+
+.quickSetup select option {
+  color: #2f281d;
+  background-color: #fffdf0;
+}
+
+.themePicker {
+  margin-top: 12px;
+  background: rgba(255, 250, 224, 0.72);
+  border: 1px solid rgba(179, 139, 29, 0.55);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.themeOptions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.themeChoice {
+  border: 1px solid #b38b1d;
+  background: #fffbe0;
+  color: #2f281d;
+  border-radius: 14px;
+  padding: 10px 6px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.themeChoice span {
+  display: block;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.themeChoice small {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+}
+
+.themeChoice.activeTheme {
+  background: #9b3d3a;
+  color: white;
+  border-color: #9b3d3a;
+  transform: translateY(-1px);
+}
+
+.gameTheme-temple {
+  background:
+    radial-gradient(circle at top left, rgba(255, 196, 87, 0.34), transparent 35%),
+    linear-gradient(135deg, #120c08, #35200f) !important;
+}
+
+.gameTheme-forest {
+  background:
+    radial-gradient(circle at top left, rgba(142, 255, 168, 0.25), transparent 35%),
+    linear-gradient(135deg, #07180d, #17492b) !important;
+}
+
+.gameTheme-ocean {
+  background:
+    radial-gradient(circle at top left, rgba(115, 213, 255, 0.32), transparent 35%),
+    linear-gradient(135deg, #071225, #0b5275) !important;
+}
+
+.gameTheme-sunset {
+  background:
+    radial-gradient(circle at top left, rgba(255, 213, 87, 0.38), transparent 35%),
+    linear-gradient(135deg, #341007, #b94d1c) !important;
+}
+
+.gameTheme-royal {
+  background:
+    radial-gradient(circle at top left, rgba(218, 172, 255, 0.34), transparent 35%),
+    linear-gradient(135deg, #170723, #4b176b) !important;
+}
+
+.gameTheme-night {
+  background:
+    radial-gradient(circle at top left, rgba(174, 203, 255, 0.2), transparent 35%),
+    linear-gradient(135deg, #05070d, #111827) !important;
+}

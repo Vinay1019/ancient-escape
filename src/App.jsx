@@ -21,11 +21,6 @@ const DIFFICULTY = {
   Hard: { wallCount: 22, maxTurns: 30, aiMin: 62, aiMax: 88 },
 };
 
-const keyOf = (p) => `${p.r},${p.c}`;
-const same = (a, b) => a.r === b.r && a.c === b.c;
-const manhattan = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
-const inBounds = (p) => p.r >= 0 && p.r < GRID_SIZE && p.c >= 0 && p.c < GRID_SIZE;
-
 const DIRS = [
   { name: "Up", dr: -1, dc: 0, key: "ArrowUp", icon: "↑" },
   { name: "Down", dr: 1, dc: 0, key: "ArrowDown", icon: "↓" },
@@ -33,71 +28,191 @@ const DIRS = [
   { name: "Right", dr: 0, dc: 1, key: "ArrowRight", icon: "→" },
 ];
 
+const PLAYER_EMOJIS = [
+  { emoji: "👦", label: "Boy" },
+  { emoji: "👧", label: "Girl" },
+  { emoji: "👨", label: "Man" },
+  { emoji: "👩", label: "Woman" },
+  { emoji: "🧑", label: "Unisex" },
+  { emoji: "🧒", label: "Kid" },
+  { emoji: "🧙", label: "Mystic" },
+  { emoji: "🏃", label: "Runner" },
+];
+
+const BACKGROUND_THEMES = [
+  { id: "temple", label: "Temple", color: "🟤" },
+  { id: "forest", label: "Forest", color: "🟢" },
+  { id: "ocean", label: "Ocean", color: "🔵" },
+  { id: "sunset", label: "Sunset", color: "🟠" },
+  { id: "royal", label: "Royal", color: "🟣" },
+  { id: "night", label: "Night", color: "⚫" },
+];
+
+const keyOf = (p) => `${p.r},${p.c}`;
+const same = (a, b) => a.r === b.r && a.c === b.c;
+const manhattan = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
+const inBounds = (p) => p.r >= 0 && p.r < GRID_SIZE && p.c >= 0 && p.c < GRID_SIZE;
+
+function parseParticipantId(value) {
+  const trimmed = value.trim().replace(/\s+/g, " ");
+
+  // Valid examples:
+  // Vinay07 -> VI
+  // Vinay Kumar07 -> VK
+  // Invalid examples:
+  // 123, Vinay, Vinay Kumar, 07Vinay, Vinay 07, Vinay07 Kumar
+  const match = trimmed.match(/^([A-Za-z]+)(?:\s+([A-Za-z]+))?(\d+)$/);
+
+  if (!match) {
+    return {
+      isValid: false,
+      initials: "",
+      normalizedId: trimmed,
+    };
+  }
+
+  const firstWord = match[1];
+  const secondWord = match[2] || "";
+  const number = match[3];
+
+  const initials = secondWord
+    ? `${firstWord[0]}${secondWord[0]}`.toUpperCase()
+    : firstWord.slice(0, 2).toUpperCase();
+
+  return {
+    isValid: true,
+    initials,
+    normalizedId: secondWord
+      ? `${firstWord} ${secondWord}${number}`
+      : `${firstWord}${number}`,
+  };
+}
+
+function isValidAge(value) {
+  const ageNumber = Number(value);
+  return Number.isInteger(ageNumber) && ageNumber > 0 && ageNumber <= 120;
+}
+
+function getSuggestedEmoji(age, gender) {
+  const ageNumber = Number(age);
+  const normalizedGender = String(gender || "").toLowerCase();
+
+  if (!Number.isFinite(ageNumber) || !age) return "🧑";
+
+  if (normalizedGender === "male") return ageNumber < 18 ? "👦" : "👨";
+  if (normalizedGender === "female") return ageNumber < 18 ? "👧" : "👩";
+
+  return ageNumber < 18 ? "🧒" : "🧑";
+}
+
 function neighbors(pos, walls) {
-  return DIRS.map((d) => ({ r: pos.r + d.dr, c: pos.c + d.dc, move: d.name, icon: d.icon }))
-    .filter((p) => inBounds(p) && !walls.has(keyOf(p)));
+  return DIRS.map((d) => ({
+    r: pos.r + d.dr,
+    c: pos.c + d.dc,
+    move: d.name,
+    icon: d.icon,
+  })).filter((p) => inBounds(p) && !walls.has(keyOf(p)));
 }
 
 function shortestPathExists(start, goal, walls) {
   const q = [start];
   const seen = new Set([keyOf(start)]);
+
   while (q.length > 0) {
     const current = q.shift();
+
     if (same(current, goal)) return true;
+
     for (const n of neighbors(current, walls)) {
       const k = keyOf(n);
+
       if (!seen.has(k)) {
         seen.add(k);
         q.push(n);
       }
     }
   }
+
   return false;
 }
 
 function createWalls(level, wallCount) {
-  const protectedCells = new Set([keyOf(PARTICIPANT_START), keyOf(AI_START), keyOf(GOAL)]);
+  const protectedCells = new Set([
+    keyOf(PARTICIPANT_START),
+    keyOf(AI_START),
+    keyOf(GOAL),
+  ]);
+
   for (let attempts = 0; attempts < 700; attempts++) {
     const walls = new Set();
     const midCol = 3 + ((level + Math.floor(Math.random() * 3)) % 3);
+
     for (let r = 1; r < GRID_SIZE - 1; r++) {
       if (Math.random() < 0.55) walls.add(`${r},${midCol}`);
     }
+
     while (walls.size < wallCount) {
-      const p = { r: Math.floor(Math.random() * GRID_SIZE), c: Math.floor(Math.random() * GRID_SIZE) };
+      const p = {
+        r: Math.floor(Math.random() * GRID_SIZE),
+        c: Math.floor(Math.random() * GRID_SIZE),
+      };
+
       const k = keyOf(p);
+
       if (!protectedCells.has(k)) walls.add(k);
     }
-    if (shortestPathExists(PARTICIPANT_START, GOAL, walls) && shortestPathExists(AI_START, PARTICIPANT_START, walls)) {
+
+    if (
+      shortestPathExists(PARTICIPANT_START, GOAL, walls) &&
+      shortestPathExists(AI_START, PARTICIPANT_START, walls)
+    ) {
       return walls;
     }
   }
+
   return new Set();
 }
 
 function aiMoveOptions(ai, participant, walls, difficultySettings) {
-  const opts = neighbors(ai, walls).map((p) => ({ ...p, label: p.move, distanceToPlayer: manhattan(p, participant) }));
+  const opts = neighbors(ai, walls).map((p) => ({
+    ...p,
+    label: p.move,
+    distanceToPlayer: manhattan(p, participant),
+  }));
+
   if (opts.length === 0) return [];
+
   opts.sort((a, b) => a.distanceToPlayer - b.distanceToPlayer);
+
   const top = opts.slice(0, 2);
+
   if (top.length === 1) return [{ ...top[0], probability: 100 }];
 
   const firstScore = Math.max(1, 10 - top[0].distanceToPlayer);
   const secondScore = Math.max(1, 10 - top[1].distanceToPlayer);
   const total = firstScore + secondScore;
+
   let p1 = Math.round((firstScore / total) * 100);
   p1 = Math.max(difficultySettings.aiMin, Math.min(difficultySettings.aiMax, p1));
-  return [{ ...top[0], probability: p1 }, { ...top[1], probability: 100 - p1 }];
+
+  return [
+    { ...top[0], probability: p1 },
+    { ...top[1], probability: 100 - p1 },
+  ];
 }
 
 function chooseWeighted(options) {
   if (options.length === 0) return null;
+
   const roll = Math.random() * 100;
   let total = 0;
+
   for (const opt of options) {
     total += opt.probability;
+
     if (roll <= total) return opt;
   }
+
   return options[options.length - 1];
 }
 
@@ -106,21 +221,58 @@ function possiblePlayerMoves(player, ai, walls) {
     ...p,
     distanceToGoal: manhattan(p, GOAL),
     distanceFromAI: manhattan(p, ai),
-    risk: manhattan(p, ai) <= 2 ? "High" : manhattan(p, ai) <= 4 ? "Medium" : "Low",
+    risk:
+      manhattan(p, ai) <= 2
+        ? "High"
+        : manhattan(p, ai) <= 4
+          ? "Medium"
+          : "Low",
   }));
 }
 
 function downloadCSV(rows) {
-  const headers = ["sessionId", "participantId", "age", "gender", "difficulty", "mode", "game", "turn", "participantRow", "participantCol", "aiRow", "aiCol", "participantMove", "aiPreview", "aiChosenMove", "risk", "goalDistance", "aiDistance", "reactionTimeMs", "reactionTimeSeconds", "totalElapsedMs", "totalElapsedSeconds", "result", "timestamp"];
+  const headers = [
+    "sessionId",
+    "participantId",
+    "participantInitials",
+    "age",
+    "gender",
+    "participantEmoji",
+    "backgroundTheme",
+    "difficulty",
+    "mode",
+    "game",
+    "turn",
+    "participantRow",
+    "participantCol",
+    "aiRow",
+    "aiCol",
+    "participantMove",
+    "aiPreview",
+    "aiChosenMove",
+    "risk",
+    "goalDistance",
+    "aiDistance",
+    "reactionTimeMs",
+    "reactionTimeSeconds",
+    "totalElapsedMs",
+    "totalElapsedSeconds",
+    "result",
+    "timestamp",
+  ];
+
   const csv = [headers.join(",")]
     .concat(rows.map((row) => headers.map((h) => JSON.stringify(row[h] ?? "")).join(",")))
     .join("\n");
+
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
+
   a.href = url;
   a.download = `Ancient_Escape_${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
+
   URL.revokeObjectURL(url);
 }
 
@@ -129,6 +281,8 @@ export default function App() {
   const [participantId, setParticipantId] = useState("");
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("Prefer not to say");
+  const [selectedEmoji, setSelectedEmoji] = useState("");
+  const [selectedTheme, setSelectedTheme] = useState("temple");
   const [difficulty, setDifficulty] = useState("Normal");
   const [mode, setMode] = useState("Experiment");
   const [game, setGame] = useState(1);
@@ -136,7 +290,7 @@ export default function App() {
   const [walls, setWalls] = useState(() => createWalls(1, DIFFICULTY.Normal.wallCount));
   const [player, setPlayer] = useState(PARTICIPANT_START);
   const [ai, setAi] = useState(AI_START);
-  const [message, setMessage] = useState("Study the guardian preview, then choose your route.");
+  const [message, setMessage] = useState("Study the Guardian preview, then choose your route.");
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
   const [wins, setWins] = useState(0);
@@ -162,6 +316,14 @@ export default function App() {
   const currentReactionSeconds = Math.round((now - turnStartedAt) / 1000);
   const totalElapsedSeconds = Math.round((now - gameStartedAt) / 1000);
 
+  const participantInfo = parseParticipantId(participantId);
+  const participantIdValid = participantInfo.isValid;
+  const participantInitials = participantInfo.initials;
+  const ageValid = isValidAge(age);
+  const canStart = participantIdValid && ageValid;
+  const suggestedEmoji = getSuggestedEmoji(age, gender);
+  const participantEmoji = selectedEmoji || suggestedEmoji;
+
   const adminStats = useMemo(() => {
     const sessionIds = new Set(adminRows.map((row) => row.sessionId).filter(Boolean));
     const participantIds = new Set(adminRows.map((row) => row.participantId).filter(Boolean));
@@ -171,6 +333,7 @@ export default function App() {
     const reactionValues = adminRows
       .map((row) => Number(row.reactionTimeMs))
       .filter((value) => Number.isFinite(value));
+
     const avgReactionMs = reactionValues.length
       ? Math.round(reactionValues.reduce((sum, value) => sum + value, 0) / reactionValues.length)
       : 0;
@@ -198,11 +361,15 @@ export default function App() {
 
     const savedSessions = JSON.parse(localStorage.getItem("ancientEscapeSessions") || "[]");
     const filteredSessions = savedSessions.filter((session) => session.sessionId !== sessionId);
+
     const updatedSession = {
       sessionId,
-      participantId,
+      participantId: participantInfo.normalizedId,
+      participantInitials,
       age,
       gender,
+      participantEmoji,
+      backgroundTheme: selectedTheme,
       difficulty,
       mode,
       savedAt: new Date().toISOString(),
@@ -210,7 +377,19 @@ export default function App() {
     };
 
     localStorage.setItem("ancientEscapeSessions", JSON.stringify([...filteredSessions, updatedSession]));
-  }, [logs, sessionId, participantId, age, gender, difficulty, mode]);
+  }, [
+    logs,
+    sessionId,
+    participantId,
+    participantInfo.normalizedId,
+    participantInitials,
+    age,
+    gender,
+    participantEmoji,
+    selectedTheme,
+    difficulty,
+    mode,
+  ]);
 
   function resetLevel(nextGame = game) {
     setGame(nextGame);
@@ -219,11 +398,16 @@ export default function App() {
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
-    setMessage("Study the guardian preview, then choose your route.");
+    setMessage("Study the Guardian preview, then choose your route.");
     setTurnStartedAt(Date.now());
   }
 
   function startSession(selectedMode = "Experiment") {
+    if (!canStart) {
+      setModal("validation");
+      return;
+    }
+
     setMode(selectedMode);
     setSessionId(`AE-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
     setLogs([]);
@@ -252,7 +436,7 @@ export default function App() {
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
-    setMessage("Study the guardian preview, then choose your route.");
+    setMessage("Study the Guardian preview, then choose your route.");
     setGameStartedAt(Date.now());
     setTurnStartedAt(Date.now());
     setScreen("game");
@@ -260,16 +444,18 @@ export default function App() {
 
   function finishGame(status) {
     setResult(status);
+
     if (status === "escaped") {
       setWins((w) => w + 1);
       setMessage("Victory! You escaped the ancient maze.");
     } else if (status === "caught") {
       setLosses((l) => l + 1);
-      setMessage("The guardian caught you. Analyze the safer route next time.");
+      setMessage("The Guardian caught you. Analyze the safer route next time.");
     } else {
       setLosses((l) => l + 1);
       setMessage("Turn limit reached. The temple doors closed.");
     }
+
     setTimeout(() => {
       if (game >= totalGames) setScreen("summary");
       else resetLevel(game + 1);
@@ -286,23 +472,32 @@ export default function App() {
     const aiPreview = aiOptions.map((o) => `${o.label} ${o.probability}%`).join(" | ");
     const chosenAi = chooseWeighted(aiOptions);
     const nextPlayer = { r: target.r, c: target.c };
+
     let nextAi = ai;
     let status = "playing";
     let aiChosenMove = "None";
 
-    if (same(nextPlayer, GOAL)) status = "escaped";
-    else if (chosenAi) {
+    if (same(nextPlayer, GOAL)) {
+      status = "escaped";
+    } else if (chosenAi) {
       nextAi = { r: chosenAi.r, c: chosenAi.c };
       aiChosenMove = chosenAi.label;
+
       if (same(nextAi, nextPlayer)) status = "caught";
     }
-    if (status === "playing" && turn >= settings.maxTurns) status = "timeout";
+
+    if (status === "playing" && turn >= settings.maxTurns) {
+      status = "timeout";
+    }
 
     const row = {
       sessionId,
-      participantId,
+      participantId: participantInfo.normalizedId,
+      participantInitials,
       age,
       gender,
+      participantEmoji,
+      backgroundTheme: selectedTheme,
       difficulty,
       mode,
       game,
@@ -322,7 +517,7 @@ export default function App() {
       totalElapsedMs,
       totalElapsedSeconds: (totalElapsedMs / 1000).toFixed(2),
       result: status,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
     setLogs((oldLogs) => [...oldLogs, row]);
@@ -332,12 +527,13 @@ export default function App() {
     setTurnStartedAt(Date.now());
 
     setOnlineSaveStatus("Saving...");
+
     saveMoveToFirebase(row).then((saved) => {
       setOnlineSaveStatus(saved ? "Saved online" : "Local only");
     });
 
     if (status !== "playing") finishGame(status);
-    else setMessage(`You moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
+    else setMessage(`${participantInitials} moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
   }
 
   useEffect(() => {
@@ -348,10 +544,14 @@ export default function App() {
   useEffect(() => {
     function handleKeyDown(e) {
       const dir = DIRS.find((d) => d.key === e.key);
+
       if (!dir) return;
+
       const target = playerOptions.find((o) => o.move === dir.name);
+
       if (target) movePlayer(target);
     }
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [playerOptions, result, screen]);
@@ -385,11 +585,13 @@ export default function App() {
 
     try {
       const user = await signInAdmin();
+
       if (!isAdminUser(user)) {
         setAdminError("This Google account is not allowed to access the admin dashboard.");
         await signOutAdmin();
         return;
       }
+
       await loadAdminRows();
     } catch (error) {
       console.error("Admin sign-in failed:", error);
@@ -411,7 +613,9 @@ export default function App() {
 
   function clearSavedSessions() {
     const confirmClear = window.confirm("Clear all Ancient Escape saved data from this device?");
+
     if (!confirmClear) return;
+
     localStorage.removeItem("ancientEscapeSessions");
     alert("Saved data cleared from this device.");
   }
@@ -419,14 +623,17 @@ export default function App() {
   function sendFeedback() {
     const subject = encodeURIComponent("Ancient Escape Feedback");
     const body = encodeURIComponent(feedback || "Feedback about Ancient Escape:");
+
     window.location.href = `mailto:pavulurivinay@gmail.com?subject=${subject}&body=${body}`;
   }
 
   function cellContent(r, c) {
     const p = { r, c };
-    if (same(p, player)) return "🧍";
+
+    if (same(p, player)) return participantEmoji;
     if (same(p, ai)) return "🛡️";
     if (same(p, GOAL)) return "🏁";
+
     return "";
   }
 
@@ -442,14 +649,19 @@ export default function App() {
               <h1>Ancient Escape Data</h1>
               <p>View Firebase records and export gameplay data.</p>
             </div>
-            <button className="secondaryButton" onClick={() => window.location.href = "/"}>Back to App</button>
+
+            <button className="secondaryButton" onClick={() => window.location.href = "/"}>
+              Back to App
+            </button>
           </div>
 
           {!adminUser && (
             <div className="adminLoginBox">
               <h2>Admin Login Required</h2>
               <p>Sign in with the authorized Google account to view collected data.</p>
-              <button className="primaryButton" onClick={handleAdminSignIn}>Sign in with Google</button>
+              <button className="primaryButton" onClick={handleAdminSignIn}>
+                Sign in with Google
+              </button>
             </div>
           )}
 
@@ -457,18 +669,31 @@ export default function App() {
             <div className="adminLoginBox dangerBox">
               <h2>Access Denied</h2>
               <p>{adminUser.email} is not allowed to access this dashboard.</p>
-              <button className="secondaryButton" onClick={signOutAdmin}>Sign out</button>
+              <button className="secondaryButton" onClick={signOutAdmin}>
+                Sign out
+              </button>
             </div>
           )}
 
           {adminUser && allowedAdmin && (
             <>
               <div className="adminUserRow">
-                <span>Signed in as <b>{adminUser.email}</b></span>
+                <span>
+                  Signed in as <b>{adminUser.email}</b>
+                </span>
+
                 <div className="buttonRow adminActions">
-                  <button className="primaryButton" onClick={loadAdminRows} disabled={adminLoading}>{adminLoading ? "Loading..." : "Refresh Data"}</button>
-                  <button className="secondaryButton" onClick={downloadAdminRows}>Download CSV</button>
-                  <button className="secondaryButton" onClick={signOutAdmin}>Sign Out</button>
+                  <button className="primaryButton" onClick={loadAdminRows} disabled={adminLoading}>
+                    {adminLoading ? "Loading..." : "Refresh Data"}
+                  </button>
+
+                  <button className="secondaryButton" onClick={downloadAdminRows}>
+                    Download CSV
+                  </button>
+
+                  <button className="secondaryButton" onClick={signOutAdmin}>
+                    Sign Out
+                  </button>
                 </div>
               </div>
 
@@ -491,12 +716,13 @@ export default function App() {
                       <th>Game</th>
                       <th>Turn</th>
                       <th>Move</th>
-                      <th>AI Move</th>
+                      <th>Guardian Move</th>
                       <th>Risk</th>
                       <th>Reaction</th>
                       <th>Result</th>
                     </tr>
                   </thead>
+
                   <tbody>
                     {adminRows.slice(0, 100).map((row) => (
                       <tr key={row.id}>
@@ -516,7 +742,11 @@ export default function App() {
                 </table>
               </div>
 
-              {adminRows.length > 100 && <p className="adminNote">Showing latest 100 rows. Use Download CSV for all loaded records.</p>}
+              {adminRows.length > 100 && (
+                <p className="adminNote">
+                  Showing latest 100 rows. Use Download CSV for all loaded records.
+                </p>
+              )}
             </>
           )}
 
@@ -530,7 +760,10 @@ export default function App() {
     return (
       <div className="homePage">
         <div className="homeOverlay" />
-        <button className="settingsButton" onClick={() => setModal("settings")}>⚙️</button>
+
+        <button className="settingsButton" onClick={() => setModal("settings")}>
+          ⚙️
+        </button>
 
         <main className="homeContent">
           <div className="logoBlock">
@@ -541,33 +774,135 @@ export default function App() {
           <section className="installCard">
             <h2>Download Ancient Escape</h2>
             <p>Install the game to your home screen for the best full-screen experience.</p>
-            <div className="installHint">👆 Tap browser menu, then choose <b>Install App</b> or <b>Add to Home Screen</b></div>
+            <div className="installHint">
+              👆 Tap browser menu, then choose <b>Install App</b> or <b>Add to Home Screen</b>
+            </div>
           </section>
 
           <section className="quickSetup">
-            <input value={participantId} onChange={(e) => setParticipantId(e.target.value)} placeholder="Participant ID" />
-            <div className="compactRow">
-              <input value={age} onChange={(e) => setAge(e.target.value)} placeholder="Age" />
-              <select value={gender} onChange={(e) => setGender(e.target.value)}>
-                <option>Female</option>
-                <option>Male</option>
-                <option>Other</option>
-                <option>Prefer not to say</option>
-              </select>
+            <div className="inputGroup">
+              <input
+                value={participantId}
+                onChange={(e) => setParticipantId(e.target.value)}
+                placeholder="Participant ID, example Vinay07 or Vinay Kumar07"
+                required
+              />
+
+              {participantId.trim() && !participantIdValid && (
+                <div className="fieldError">
+                  Participant ID must be word + number or two words + number. Example: Vinay07 or Vinay Kumar07.
+                </div>
+              )}
+
+              {participantIdValid && (
+                <div className="fieldSuccess">
+                  Initials: {participantInitials}
+                </div>
+              )}
             </div>
+
+            <div className="compactRow">
+              <div className="inputGroup">
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  placeholder="Age"
+                  required
+                />
+
+                {age.trim() && !ageValid && (
+                  <div className="fieldError">
+                    Age is mandatory and must be between 1 and 120.
+                  </div>
+                )}
+              </div>
+
+              <div className="inputGroup">
+                <select value={gender} onChange={(e) => setGender(e.target.value)}>
+                  <option>Female</option>
+                  <option>Male</option>
+                  <option>Other</option>
+                  <option>Prefer not to say</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="emojiPicker">
+              <div className="emojiPickerTitle">Choose your character</div>
+              <div className="emojiOptions">
+                {PLAYER_EMOJIS.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    className={participantEmoji === item.emoji ? "emojiChoice activeEmoji" : "emojiChoice"}
+                    onClick={() => setSelectedEmoji(item.emoji)}
+                    title={item.label}
+                  >
+                    <span>{item.emoji}</span>
+                    <small>{item.label}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="themePicker">
+              <div className="emojiPickerTitle">Choose game background</div>
+              <div className="themeOptions">
+                {BACKGROUND_THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    className={selectedTheme === theme.id ? "themeChoice activeTheme" : "themeChoice"}
+                    onClick={() => setSelectedTheme(theme.id)}
+                  >
+                    <span>{theme.color}</span>
+                    <small>{theme.label}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="difficultyPills">
-              {Object.keys(DIFFICULTY).map((d) => <button key={d} className={difficulty === d ? "active" : ""} onClick={() => setDifficulty(d)}>{d}</button>)}
+              {Object.keys(DIFFICULTY).map((d) => (
+                <button
+                  key={d}
+                  className={difficulty === d ? "active" : ""}
+                  onClick={() => setDifficulty(d)}
+                >
+                  {d}
+                </button>
+              ))}
             </div>
           </section>
 
           <div className="homeButtons">
-            <button className="mainPlayButton" onClick={() => startSession("Experiment")} disabled={!participantId.trim()}>🧠 Play Now</button>
-            <button className="menuButton" onClick={() => setModal("online")}>👥 Online Multiplayer</button>
-            <button className="menuButton" onClick={() => startSession("Practice")}>🤖 Practice with AI</button>
+            <button className="mainPlayButton" onClick={() => startSession("Experiment")} disabled={!canStart}>
+              🧠 Play Now
+            </button>
+
+            <button className="menuButton" onClick={() => setModal("online")}>
+              👥 Online Multiplayer
+            </button>
+
+            <button className="menuButton" onClick={() => startSession("Practice")} disabled={!canStart}>
+              🤖 Practice with Guardian
+            </button>
+
             <div className="twoButtonRow">
-              <button className="menuButton smallMenu" onClick={() => setModal("feedback")}>💬 Feedback</button>
-              <button className="menuButton smallMenu" onClick={() => setModal("learn")}>📖 Learn</button>
-              <button className="menuButton smallMenu" onClick={() => setModal("savedData")}>💾 Saved Data</button>
+              <button className="menuButton smallMenu" onClick={() => setModal("feedback")}>
+                💬 Feedback
+              </button>
+
+              <button className="menuButton smallMenu" onClick={() => setModal("learn")}>
+                📖 Learn
+              </button>
+
+              <button className="menuButton smallMenu" onClick={() => setModal("savedData")}>
+                💾 Saved Data
+              </button>
             </div>
           </div>
         </main>
@@ -575,41 +910,94 @@ export default function App() {
         {modal && (
           <div className="modalOverlay" onClick={() => setModal(null)}>
             <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-              {modal === "online" && <>
-                <h2>Online Multiplayer</h2>
-                <p>This button is ready on the home screen. True live multiplayer needs a backend room system, such as Firebase or Supabase.</p>
-                <p>For now, share your current app link with friends so they can play the same version.</p>
-                <button className="primaryButton" onClick={() => navigator.clipboard.writeText(window.location.href)}>Copy App Link</button>
-              </>}
-              {modal === "feedback" && <>
-                <h2>Send Feedback</h2>
-                <p>Write feedback, then send it through your email app.</p>
-                <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Type your feedback here..." />
-                <button className="primaryButton" onClick={sendFeedback}>Send Feedback</button>
-              </>}
-              {modal === "learn" && <>
-                <h2>How to Play</h2>
-                <p>Reach 🏁 before the guardian 🛡️ catches you. Each turn shows two possible guardian moves and their probabilities.</p>
-                <p>Choose the faster path when you want speed, or the safer path when the guardian is close.</p>
-                <p>You can use highlighted cells, move buttons, or keyboard arrow keys.</p>
-              </>}
-              {modal === "settings" && <>
-                <h2>Game Settings</h2>
-                <p>Difficulty controls wall count, turn limit, and guardian chase strength.</p>
-                <div className="difficultyPills modalPills">
-                  {Object.keys(DIFFICULTY).map((d) => <button key={d} className={difficulty === d ? "active" : ""} onClick={() => setDifficulty(d)}>{d}</button>)}
-                </div>
-              </>}
-              {modal === "savedData" && <>
-                <h2>Saved Data</h2>
-                <p>Ancient Escape now automatically saves gameplay rows on this device after each move.</p>
-                <p>You can download all saved sessions from this browser, or clear saved data after exporting.</p>
-                <div className="buttonRow modalButtonRow">
-                  <button className="primaryButton" onClick={downloadSavedSessions}>Download Saved CSV</button>
-                  <button className="secondaryButton" onClick={clearSavedSessions}>Clear Saved Data</button>
-                </div>
-              </>}
-              <button className="secondaryButton modalClose" onClick={() => setModal(null)}>Close</button>
+              {modal === "validation" && (
+                <>
+                  <h2>Missing Required Details</h2>
+                  <p>Please enter a valid Participant ID and Age before starting.</p>
+                  <p><b>Participant ID examples:</b> Vinay07 or Vinay Kumar07.</p>
+                  <p><b>Age:</b> enter a number between 1 and 120.</p>
+                </>
+              )}
+
+              {modal === "online" && (
+                <>
+                  <h2>Online Multiplayer</h2>
+                  <p>
+                    This button is ready on the home screen. True live multiplayer needs a backend room
+                    system, such as Firebase or Supabase.
+                  </p>
+                  <p>For now, share your current app link with friends so they can play the same version.</p>
+                  <button className="primaryButton" onClick={() => navigator.clipboard.writeText(window.location.href)}>
+                    Copy App Link
+                  </button>
+                </>
+              )}
+
+              {modal === "feedback" && (
+                <>
+                  <h2>Send Feedback</h2>
+                  <p>Write feedback, then send it through your email app.</p>
+                  <textarea
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    placeholder="Type your feedback here..."
+                  />
+                  <button className="primaryButton" onClick={sendFeedback}>
+                    Send Feedback
+                  </button>
+                </>
+              )}
+
+              {modal === "learn" && (
+                <>
+                  <h2>How to Play</h2>
+                  <p>
+                    Reach 🏁 before the Guardian 🛡️ catches you. Each turn shows two possible Guardian
+                    moves and their probabilities.
+                  </p>
+                  <p>Choose the faster path when you want speed, or the safer path when the Guardian is close.</p>
+                  <p>You can use highlighted cells, move buttons, or keyboard arrow keys.</p>
+                </>
+              )}
+
+              {modal === "settings" && (
+                <>
+                  <h2>Game Settings</h2>
+                  <p>Difficulty controls wall count, turn limit, and Guardian chase strength.</p>
+                  <div className="difficultyPills modalPills">
+                    {Object.keys(DIFFICULTY).map((d) => (
+                      <button
+                        key={d}
+                        className={difficulty === d ? "active" : ""}
+                        onClick={() => setDifficulty(d)}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {modal === "savedData" && (
+                <>
+                  <h2>Saved Data</h2>
+                  <p>Ancient Escape now automatically saves gameplay rows on this device after each move.</p>
+                  <p>You can download all saved sessions from this browser, or clear saved data after exporting.</p>
+                  <div className="buttonRow modalButtonRow">
+                    <button className="primaryButton" onClick={downloadSavedSessions}>
+                      Download Saved CSV
+                    </button>
+
+                    <button className="secondaryButton" onClick={clearSavedSessions}>
+                      Clear Saved Data
+                    </button>
+                  </div>
+                </>
+              )}
+
+              <button className="secondaryButton modalClose" onClick={() => setModal(null)}>
+                Close
+              </button>
             </div>
           </div>
         )}
@@ -624,13 +1012,16 @@ export default function App() {
           <div className="badge darkBadge">Participant Consent</div>
           <h1>Before You Begin</h1>
           <p>
-            You are about to take part in Ancient Escape, a decision-making strategy task. The game records your moves, guardian probability previews, difficulty, result, and timestamps for each turn.
+            You are about to take part in Ancient Escape, a decision-making strategy task. The game records
+            your moves, Guardian probability previews, difficulty, result, and timestamps for each turn.
           </p>
+
           <div className="consentBox">
             <label className="checkLine"><input type="checkbox" /> I understand this is a game-based task.</label>
             <label className="checkLine"><input type="checkbox" /> I understand my gameplay data may be exported as CSV.</label>
             <label className="checkLine"><input type="checkbox" /> I am ready to continue to the instructions.</label>
           </div>
+
           <div className="buttonRow">
             <button className="secondaryButton" onClick={() => setScreen("welcome")}>Back</button>
             <button className="primaryButton" onClick={() => setScreen("instructions")}>I Agree & Continue</button>
@@ -646,22 +1037,27 @@ export default function App() {
         <div className="flowCard premiumPanel lightPanel">
           <div className="badge darkBadge">How to Play</div>
           <h1>{mode === "Practice" ? "Practice Round" : "Experiment Instructions"}</h1>
+
           <div className="instructionGrid">
-            <div><strong>🧍 Your role</strong><span>Move through the maze and reach the goal.</span></div>
-            <div><strong>🏁 Goal</strong><span>Escape before the guardian catches you.</span></div>
-            <div><strong>🛡️ Guardian</strong><span>The guardian moves after every participant move.</span></div>
-            <div><strong>📊 Probability</strong><span>Two likely guardian moves are shown before you choose.</span></div>
+            <div><strong>{participantEmoji} Your role</strong><span>Move through the maze and reach the goal.</span></div>
+            <div><strong>🏁 Goal</strong><span>Escape before the Guardian catches you.</span></div>
+            <div><strong>🛡️ Guardian</strong><span>The Guardian moves after every participant move.</span></div>
+            <div><strong>📊 Probability</strong><span>Two likely Guardian moves are shown before you choose.</span></div>
             <div><strong>⚠️ Risk</strong><span>Some faster routes may be more dangerous.</span></div>
             <div><strong>🎮 Controls</strong><span>Use highlighted cells, move cards, or arrow keys.</span></div>
           </div>
+
           <div className="flowNote">
             {mode === "Practice"
               ? "Practice mode runs one game only and helps users understand the rules before the main task."
               : "Experiment mode runs three games and saves detailed move-by-move data for CSV export."}
           </div>
+
           <div className="buttonRow">
             <button className="secondaryButton" onClick={() => setScreen("welcome")}>Back Home</button>
-            <button className="primaryButton" onClick={beginGame}>{mode === "Practice" ? "Start Practice" : "Start Experiment"}</button>
+            <button className="primaryButton" onClick={beginGame}>
+              {mode === "Practice" ? "Start Practice" : "Start Experiment"}
+            </button>
           </div>
         </div>
       </div>
@@ -674,11 +1070,13 @@ export default function App() {
         <div className="summaryCard premiumPanel lightPanel">
           <div className="badge darkBadge">🏁 Session Complete</div>
           <h1>Ancient Escape Results</h1>
-          <p>{mode} mode complete for {participantId || "Practice Player"}.</p>
+          <p>{mode} mode complete for {participantInfo.normalizedId || "Practice Player"}.</p>
+
           <div className="scoreGrid">
             <div className="scoreBox winBox"><strong>{wins}</strong><span>Escapes</span></div>
             <div className="scoreBox lossBox"><strong>{losses}</strong><span>Caught / Timeout</span></div>
           </div>
+
           <div className="buttonRow">
             <button className="primaryButton" onClick={() => downloadCSV(logs)}>Download Current CSV</button>
             <button className="secondaryButton" onClick={downloadSavedSessions}>Download Saved Data</button>
@@ -690,7 +1088,7 @@ export default function App() {
   }
 
   return (
-    <div className="page gamePage">
+    <div className={`page gamePage gameTheme-${selectedTheme}`}>
       <main className="gameLayout">
         <section className="boardCard premiumPanel lightPanel">
           <div className="gameHeader">
@@ -701,41 +1099,75 @@ export default function App() {
               <p className="timerLine">⏱️ Total: {totalElapsedSeconds}s · Current decision: {currentReactionSeconds}s</p>
               <p className="saveStatusLine">☁️ Online save: {onlineSaveStatus}</p>
             </div>
+
             <button className="secondaryButton" onClick={() => resetLevel(game)}>Restart Level</button>
           </div>
+
           <div className="progressTrack"><div style={{ width: `${progress}%` }} /></div>
           <div className="messageBox">{message}</div>
+
           <div className="grid" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
-            {Array.from({ length: GRID_SIZE }).map((_, r) => Array.from({ length: GRID_SIZE }).map((_, c) => {
-              const isWall = walls.has(`${r},${c}`);
-              const isGoal = same({ r, c }, GOAL);
-              const isPlayer = same({ r, c }, player);
-              const isAi = same({ r, c }, ai);
-              const moveOption = playerOptions.find((o) => o.r === r && o.c === c);
-              let className = "cell";
-              if (isWall) className += " wall";
-              if (isGoal) className += " goal";
-              if (isPlayer) className += " player";
-              if (isAi) className += " guardian";
-              if (moveOption) className += " option";
-              return <button key={`${r}-${c}`} onClick={() => moveOption && movePlayer(moveOption)} disabled={!moveOption || !!result} className={className}>{cellContent(r, c)}</button>;
-            }))}
+            {Array.from({ length: GRID_SIZE }).map((_, r) =>
+              Array.from({ length: GRID_SIZE }).map((_, c) => {
+                const isWall = walls.has(`${r},${c}`);
+                const isGoal = same({ r, c }, GOAL);
+                const isPlayer = same({ r, c }, player);
+                const isAi = same({ r, c }, ai);
+                const moveOption = playerOptions.find((o) => o.r === r && o.c === c);
+
+                let className = "cell";
+                if (isWall) className += " wall";
+                if (isGoal) className += " goal";
+                if (isPlayer) className += " player";
+                if (isAi) className += " guardian";
+                if (moveOption) className += " option";
+
+                return (
+                  <button
+                    key={`${r}-${c}`}
+                    onClick={() => moveOption && movePlayer(moveOption)}
+                    disabled={!moveOption || !!result}
+                    className={className}
+                  >
+                    {cellContent(r, c)}
+                  </button>
+                );
+              })
+            )}
           </div>
         </section>
 
         <aside className="sidePanel">
           <section className="panelCard premiumPanel darkPanel">
             <h2>Guardian Probability</h2>
-            <p>Shown before participant choice.</p>
-            {aiOptions.map((o, index) => <div className="probBox" key={index}><div className="probHeader"><span>{o.icon} {o.label}</span><b>{o.probability}%</b></div><div className="bar"><div style={{ width: `${o.probability}%` }} /></div></div>)}
+            <p>Shown before {participantInitials || "participant"} chooses.</p>
+
+            {aiOptions.map((o, index) => (
+              <div className="probBox" key={index}>
+                <div className="probHeader"><span>{o.icon} {o.label}</span><b>{o.probability}%</b></div>
+                <div className="bar"><div style={{ width: `${o.probability}%` }} /></div>
+              </div>
+            ))}
           </section>
+
           <section className="panelCard premiumPanel lightPanel">
-            <h2>Your Move Options</h2>
-            {playerOptions.map((o) => <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton"><span><b>{o.icon} {o.move}</b></span><span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span><small>Goal distance: {o.distanceToGoal} · AI distance: {o.distanceFromAI}</small></button>)}
+            <h2>{participantInitials || "Your"} Move Options</h2>
+
+            {playerOptions.map((o) => (
+              <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
+                <span><b>{o.icon} {o.move}</b></span>
+                <span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span>
+                <small>Goal distance: {o.distanceToGoal} · Guardian distance: {o.distanceFromAI}</small>
+              </button>
+            ))}
           </section>
+
           <section className="panelCard premiumPanel lightPanel legend">
             <h2>Legend</h2>
-            <p>🧍 Participant</p><p>🛡️ Guardian AI</p><p>🏁 Escape Goal</p><p><span className="miniWall" /> Blocked Path</p>
+            <p>{participantEmoji} {participantInitials || "Participant"}</p>
+            <p>🛡️ Guardian</p>
+            <p>🏁 Escape Goal</p>
+            <p><span className="miniWall" /> Blocked Path</p>
           </section>
         </aside>
       </main>
