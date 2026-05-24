@@ -201,6 +201,27 @@ function aiMoveOptions(ai, participant, walls, difficultySettings) {
   ];
 }
 
+function guardianPreview(aiOptions) {
+  if (!aiOptions.length) {
+    return {
+      captureChance: 0,
+      alternativeChance: 100,
+      captureLabel: "No route",
+      alternativeLabel: "Wait",
+    };
+  }
+
+  const captureOption = aiOptions[0];
+  const alternativeOption = aiOptions[1];
+
+  return {
+    captureChance: captureOption.probability,
+    alternativeChance: alternativeOption ? alternativeOption.probability : 0,
+    captureLabel: captureOption.label,
+    alternativeLabel: alternativeOption ? alternativeOption.label : "None",
+  };
+}
+
 function chooseWeighted(options) {
   if (options.length === 0) return null;
 
@@ -303,6 +324,11 @@ function downloadCSV(rows) {
     "turn",
     "diceRoll",
     "stepsMoved",
+    "capturedThisTurn",
+    "captureCount",
+    "participantResetToStart",
+    "guardianCaptureChance",
+    "guardianAlternativeChance",
     "participantRow",
     "participantCol",
     "aiRow",
@@ -369,10 +395,12 @@ export default function App() {
   const [onlineSaveStatus, setOnlineSaveStatus] = useState("Ready");
   const [diceValue, setDiceValue] = useState(null);
   const [hasRolled, setHasRolled] = useState(false);
+  const [captureCount, setCaptureCount] = useState(0);
 
   const settings = DIFFICULTY[difficulty];
   const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
   const aiOptions = useMemo(() => aiMoveOptions(ai, player, walls, settings), [ai, player, walls, settings]);
+  const guardianStats = useMemo(() => guardianPreview(aiOptions), [aiOptions]);
   const playerOptions = useMemo(
     () => (hasRolled && diceValue ? possibleDiceMoves(player, ai, walls, diceValue) : []),
     [player, ai, walls, hasRolled, diceValue]
@@ -480,6 +508,7 @@ export default function App() {
     setLogs([]);
     setWins(0);
     setLosses(0);
+    setCaptureCount(0);
     setTurn(1);
     setGame(1);
     setWalls(createWalls(1, settings.wallCount));
@@ -553,19 +582,29 @@ export default function App() {
 
     const aiPreview = aiOptions.map((o) => `${o.label} ${o.probability}%`).join(" | ");
     const chosenAi = chooseWeighted(aiOptions);
-    const nextPlayer = { r: target.r, c: target.c };
+    const nextPlayerBeforeGuardian = { r: target.r, c: target.c };
 
+    let finalPlayer = nextPlayerBeforeGuardian;
     let nextAi = ai;
     let status = "playing";
     let aiChosenMove = "None";
+    let capturedThisTurn = false;
+    let participantResetToStart = false;
+    let nextCaptureCount = captureCount;
 
-    if (same(nextPlayer, GOAL)) {
+    if (same(nextPlayerBeforeGuardian, GOAL)) {
       status = "escaped";
     } else if (chosenAi) {
       nextAi = { r: chosenAi.r, c: chosenAi.c };
       aiChosenMove = chosenAi.label;
 
-      if (same(nextAi, nextPlayer)) status = "caught";
+      if (same(nextAi, nextPlayerBeforeGuardian)) {
+        capturedThisTurn = true;
+        participantResetToStart = true;
+        nextCaptureCount = captureCount + 1;
+        finalPlayer = PARTICIPANT_START;
+        status = "playing";
+      }
     }
 
     if (status === "playing" && turn >= settings.maxTurns) {
@@ -586,8 +625,13 @@ export default function App() {
       turn,
       diceRoll: diceValue,
       stepsMoved: target.stepsMoved || diceValue,
-      participantRow: nextPlayer.r,
-      participantCol: nextPlayer.c,
+      capturedThisTurn,
+      captureCount: nextCaptureCount,
+      participantResetToStart,
+      guardianCaptureChance: guardianStats.captureChance,
+      guardianAlternativeChance: guardianStats.alternativeChance,
+      participantRow: finalPlayer.r,
+      participantCol: finalPlayer.c,
       aiRow: nextAi.r,
       aiCol: nextAi.c,
       participantMove: target.move,
@@ -605,8 +649,9 @@ export default function App() {
     };
 
     setLogs((oldLogs) => [...oldLogs, row]);
-    setPlayer(nextPlayer);
+    setPlayer(finalPlayer);
     setAi(nextAi);
+    setCaptureCount(nextCaptureCount);
     setTurn((t) => t + 1);
     setDiceValue(null);
     setHasRolled(false);
@@ -618,8 +663,13 @@ export default function App() {
       setOnlineSaveStatus(saved ? "Saved online" : "Local only");
     });
 
-    if (status !== "playing") finishGame(status);
-    else setMessage(`${participantInitials} moved ${target.stepsMoved || diceValue} steps. Guardian moved ${aiChosenMove}. Roll again for your next turn.`);
+    if (status !== "playing") {
+      finishGame(status);
+    } else if (capturedThisTurn) {
+      setMessage(`Guardian captured ${participantInitials}! ${participantInitials} returns to start. Roll again.`);
+    } else {
+      setMessage(`${participantInitials} moved ${target.stepsMoved || diceValue} steps. Guardian moved ${aiChosenMove}. Roll again for your next turn.`);
+    }
   }
 
   useEffect(() => {
@@ -1038,10 +1088,9 @@ export default function App() {
                 <>
                   <h2>How to Play</h2>
                   <p>
-                    Reach 🏁 before the Guardian 🛡️ catches you. Each turn shows two possible Guardian
-                    moves and their probabilities.
+                    Reach 🏁 while avoiding the Guardian 🛡️. If the Guardian captures you, your character returns to the start.
                   </p>
-                  <p>Choose the faster path when you want speed, or the safer path when the Guardian is close.</p>
+                  <p>Roll the dice, choose a route, and watch the Guardian choose between a capture route and an alternative route.</p>
                   <p>You can use highlighted cells, move buttons, or keyboard arrow keys.</p>
                 </>
               )}
@@ -1127,7 +1176,7 @@ export default function App() {
           <div className="instructionGrid">
             <div><strong>{participantEmoji} Your role</strong><span>Move through the maze and reach the goal.</span></div>
             <div><strong>🏁 Goal</strong><span>Escape before the Guardian catches you.</span></div>
-            <div><strong>🛡️ Guardian</strong><span>The Guardian moves after every participant move.</span></div>
+            <div><strong>🛡️ Guardian</strong><span>The Guardian moves after every turn and sends you back to start if captured.</span></div>
             <div><strong>📊 Probability</strong><span>Two likely Guardian moves are shown before you choose.</span></div>
             <div><strong>⚠️ Risk</strong><span>Some faster routes may be more dangerous.</span></div>
             <div><strong>🎲 Dice</strong><span>Roll the dice, then choose one highlighted route.</span></div>
@@ -1160,7 +1209,8 @@ export default function App() {
 
           <div className="scoreGrid">
             <div className="scoreBox winBox"><strong>{wins}</strong><span>Escapes</span></div>
-            <div className="scoreBox lossBox"><strong>{losses}</strong><span>Caught / Timeout</span></div>
+            <div className="scoreBox lossBox"><strong>{losses}</strong><span>Timeouts</span></div>
+            <div className="scoreBox captureSummaryBox"><strong>{captureCount}</strong><span>Guardian Captures</span></div>
           </div>
 
           <div className="buttonRow">
@@ -1237,15 +1287,28 @@ export default function App() {
 
         <aside className="sidePanel">
           <section className="panelCard premiumPanel darkPanel">
-            <h2>Guardian Probability</h2>
-            <p>Shown before {participantInitials || "participant"} chooses.</p>
+            <h2>Guardian Preview</h2>
+            <p>Guardian tries to capture {participantInitials || "the participant"}.</p>
 
-            {aiOptions.map((o, index) => (
-              <div className="probBox" key={index}>
-                <div className="probHeader"><span>{o.icon} {o.label}</span><b>{o.probability}%</b></div>
-                <div className="bar"><div style={{ width: `${o.probability}%` }} /></div>
+            <div className="probBox captureBox">
+              <div className="probHeader">
+                <span>🛡️ Capture route: {guardianStats.captureLabel}</span>
+                <b>{guardianStats.captureChance}%</b>
               </div>
-            ))}
+              <div className="bar"><div style={{ width: `${guardianStats.captureChance}%` }} /></div>
+            </div>
+
+            <div className="probBox">
+              <div className="probHeader">
+                <span>↔️ Alternative route: {guardianStats.alternativeLabel}</span>
+                <b>{guardianStats.alternativeChance}%</b>
+              </div>
+              <div className="bar"><div style={{ width: `${guardianStats.alternativeChance}%` }} /></div>
+            </div>
+
+            <div className="captureCountBox">
+              Captures this session: <b>{captureCount}</b>
+            </div>
           </section>
 
           <section className="panelCard premiumPanel lightPanel">

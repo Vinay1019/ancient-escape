@@ -1187,3 +1187,31 @@ input::placeholder {
   color: #5b4214;
   font-weight: 800;
 }
+
+
+
+/* Guardian capture update */
+.captureBox {
+  border-color: rgba(255, 135, 96, 0.45);
+}
+
+.captureCountBox {
+  margin-top: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 230, 177, 0.18);
+  border-radius: 16px;
+  padding: 14px;
+  font-weight: 900;
+  color: #fff4d8;
+}
+
+.captureSummaryBox {
+  background: #fff4d8;
+  color: #8a3a16;
+}
+
+@media (max-width: 700px) {
+  .scoreGrid {
+    grid-template-columns: 1fr;
+  }
+}
