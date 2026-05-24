@@ -1215,3 +1215,53 @@ input::placeholder {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Guardian automatic dice movement */
+.guardianDicePanel {
+  margin-top: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 230, 177, 0.18);
+  border-radius: 18px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.guardianDiceValue {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #9b3d3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: 900;
+  flex: 0 0 auto;
+}
+
+.guardianDicePanel strong,
+.guardianDicePanel span {
+  display: block;
+}
+
+.guardianDicePanel span {
+  margin-top: 3px;
+  color: #fff4d8;
+  opacity: 0.9;
+  font-size: 13px;
+}
+
+.guardianMoveBox {
+  margin-top: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 230, 177, 0.18);
+  border-radius: 16px;
+  padding: 12px;
+  color: #fff4d8;
+  font-weight: 800;
+  line-height: 1.35;
+}
