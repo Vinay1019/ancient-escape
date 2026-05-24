@@ -230,6 +230,64 @@ function possiblePlayerMoves(player, ai, walls) {
   }));
 }
 
+function possibleDiceMoves(player, ai, walls, diceValue) {
+  if (!diceValue || diceValue < 1) return [];
+
+  let frontier = [{ pos: player, path: [] }];
+
+  for (let step = 0; step < diceValue; step++) {
+    const nextFrontier = [];
+
+    for (const item of frontier) {
+      for (const n of neighbors(item.pos, walls)) {
+        const alreadyVisited = item.path.some((p) => p.r === n.r && p.c === n.c);
+
+        if (alreadyVisited) continue;
+
+        nextFrontier.push({
+          pos: { r: n.r, c: n.c },
+          path: [...item.path, n],
+        });
+      }
+    }
+
+    frontier = nextFrontier;
+  }
+
+  const uniqueTargets = new Map();
+
+  for (const item of frontier) {
+    const k = keyOf(item.pos);
+
+    if (same(item.pos, player)) continue;
+
+    if (!uniqueTargets.has(k)) {
+      uniqueTargets.set(k, item);
+    }
+  }
+
+  return Array.from(uniqueTargets.values()).map((item) => {
+    const route = item.path.map((p) => p.move).join(" → ");
+    const final = item.pos;
+
+    return {
+      r: final.r,
+      c: final.c,
+      move: route,
+      icon: "🎲",
+      stepsMoved: diceValue,
+      distanceToGoal: manhattan(final, GOAL),
+      distanceFromAI: manhattan(final, ai),
+      risk:
+        manhattan(final, ai) <= 2
+          ? "High"
+          : manhattan(final, ai) <= 4
+            ? "Medium"
+            : "Low",
+    };
+  });
+}
+
 function downloadCSV(rows) {
   const headers = [
     "sessionId",
@@ -243,6 +301,8 @@ function downloadCSV(rows) {
     "mode",
     "game",
     "turn",
+    "diceRoll",
+    "stepsMoved",
     "participantRow",
     "participantCol",
     "aiRow",
@@ -290,7 +350,7 @@ export default function App() {
   const [walls, setWalls] = useState(() => createWalls(1, DIFFICULTY.Normal.wallCount));
   const [player, setPlayer] = useState(PARTICIPANT_START);
   const [ai, setAi] = useState(AI_START);
-  const [message, setMessage] = useState("Study the Guardian preview, then choose your route.");
+  const [message, setMessage] = useState("Roll the dice to reveal your movement options.");
   const [result, setResult] = useState(null);
   const [logs, setLogs] = useState([]);
   const [wins, setWins] = useState(0);
@@ -307,11 +367,16 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [sessionId, setSessionId] = useState(() => `AE-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
   const [onlineSaveStatus, setOnlineSaveStatus] = useState("Ready");
+  const [diceValue, setDiceValue] = useState(null);
+  const [hasRolled, setHasRolled] = useState(false);
 
   const settings = DIFFICULTY[difficulty];
   const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
   const aiOptions = useMemo(() => aiMoveOptions(ai, player, walls, settings), [ai, player, walls, settings]);
-  const playerOptions = useMemo(() => possiblePlayerMoves(player, ai, walls), [player, ai, walls]);
+  const playerOptions = useMemo(
+    () => (hasRolled && diceValue ? possibleDiceMoves(player, ai, walls, diceValue) : []),
+    [player, ai, walls, hasRolled, diceValue]
+  );
   const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
   const currentReactionSeconds = Math.round((now - turnStartedAt) / 1000);
   const totalElapsedSeconds = Math.round((now - gameStartedAt) / 1000);
@@ -398,7 +463,9 @@ export default function App() {
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
-    setMessage("Study the Guardian preview, then choose your route.");
+    setMessage("Roll the dice to reveal your movement options.");
+    setDiceValue(null);
+    setHasRolled(false);
     setTurnStartedAt(Date.now());
   }
 
@@ -419,6 +486,8 @@ export default function App() {
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
+    setDiceValue(null);
+    setHasRolled(false);
     setGameStartedAt(Date.now());
     setTurnStartedAt(Date.now());
 
@@ -436,7 +505,9 @@ export default function App() {
     setPlayer(PARTICIPANT_START);
     setAi(AI_START);
     setResult(null);
-    setMessage("Study the Guardian preview, then choose your route.");
+    setDiceValue(null);
+    setHasRolled(false);
+    setMessage("Roll the dice to reveal your movement options.");
     setGameStartedAt(Date.now());
     setTurnStartedAt(Date.now());
     setScreen("game");
@@ -462,8 +533,19 @@ export default function App() {
     }, 1100);
   }
 
+  function rollDice() {
+    if (result || screen !== "game" || hasRolled) return;
+
+    const roll = Math.floor(Math.random() * 6) + 1;
+
+    setDiceValue(roll);
+    setHasRolled(true);
+    setTurnStartedAt(Date.now());
+    setMessage(`${participantInitials || "Player"} rolled ${roll}. Choose one highlighted route.`);
+  }
+
   async function movePlayer(target) {
-    if (result || screen !== "game") return;
+    if (result || screen !== "game" || !hasRolled || !diceValue) return;
 
     const moveTime = Date.now();
     const reactionTimeMs = moveTime - turnStartedAt;
@@ -502,6 +584,8 @@ export default function App() {
       mode,
       game,
       turn,
+      diceRoll: diceValue,
+      stepsMoved: target.stepsMoved || diceValue,
       participantRow: nextPlayer.r,
       participantCol: nextPlayer.c,
       aiRow: nextAi.r,
@@ -524,6 +608,8 @@ export default function App() {
     setPlayer(nextPlayer);
     setAi(nextAi);
     setTurn((t) => t + 1);
+    setDiceValue(null);
+    setHasRolled(false);
     setTurnStartedAt(Date.now());
 
     setOnlineSaveStatus("Saving...");
@@ -533,7 +619,7 @@ export default function App() {
     });
 
     if (status !== "playing") finishGame(status);
-    else setMessage(`${participantInitials} moved ${target.move}. Guardian moved ${aiChosenMove}. Choose your next route.`);
+    else setMessage(`${participantInitials} moved ${target.stepsMoved || diceValue} steps. Guardian moved ${aiChosenMove}. Roll again for your next turn.`);
   }
 
   useEffect(() => {
@@ -1044,7 +1130,7 @@ export default function App() {
             <div><strong>🛡️ Guardian</strong><span>The Guardian moves after every participant move.</span></div>
             <div><strong>📊 Probability</strong><span>Two likely Guardian moves are shown before you choose.</span></div>
             <div><strong>⚠️ Risk</strong><span>Some faster routes may be more dangerous.</span></div>
-            <div><strong>🎮 Controls</strong><span>Use highlighted cells, move cards, or arrow keys.</span></div>
+            <div><strong>🎲 Dice</strong><span>Roll the dice, then choose one highlighted route.</span></div>
           </div>
 
           <div className="flowNote">
@@ -1106,6 +1192,18 @@ export default function App() {
           <div className="progressTrack"><div style={{ width: `${progress}%` }} /></div>
           <div className="messageBox">{message}</div>
 
+          <div className="dicePanel">
+            <div className="diceDisplay">{diceValue || "🎲"}</div>
+            <button className="diceButton" onClick={rollDice} disabled={hasRolled || !!result}>
+              {hasRolled ? "Choose a route" : "Roll Dice"}
+            </button>
+            <p>
+              {hasRolled
+                ? `Move exactly ${diceValue} block${diceValue === 1 ? "" : "s"} using one highlighted option.`
+                : "Roll first. Your movement options will appear after the dice roll."}
+            </p>
+          </div>
+
           <div className="grid" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
             {Array.from({ length: GRID_SIZE }).map((_, r) =>
               Array.from({ length: GRID_SIZE }).map((_, c) => {
@@ -1151,13 +1249,16 @@ export default function App() {
           </section>
 
           <section className="panelCard premiumPanel lightPanel">
-            <h2>{participantInitials || "Your"} Move Options</h2>
+            <h2>{participantInitials || "Your"} Dice Routes</h2>
+
+            {!hasRolled && <p>Roll the dice to see available routes.</p>}
+            {hasRolled && playerOptions.length === 0 && <p>No valid route available for this dice roll. Restart level or roll again after this rule is adjusted.</p>}
 
             {playerOptions.map((o) => (
               <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
                 <span><b>{o.icon} {o.move}</b></span>
                 <span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span>
-                <small>Goal distance: {o.distanceToGoal} · Guardian distance: {o.distanceFromAI}</small>
+                <small>Steps: {o.stepsMoved} · Goal distance: {o.distanceToGoal} · Guardian distance: {o.distanceFromAI}</small>
               </button>
             ))}
           </section>
