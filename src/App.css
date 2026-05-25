@@ -1443,3 +1443,137 @@ input::placeholder {
     font-size: 34px;
   }
 }
+
+
+/* Mobile responsive fix */
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.page,
+.gamePage,
+.homePage {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+.gameLayout {
+  width: 100%;
+  max-width: 100vw;
+  display: flex;
+  gap: 18px;
+  box-sizing: border-box;
+}
+
+/* Tablet and mobile */
+@media (max-width: 900px) {
+  .gamePage {
+    padding: 12px;
+  }
+
+  .gameLayout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .boardCard,
+  .sidePanel,
+  .panelCard {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .gameHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .gameHeader h1 {
+    font-size: 34px;
+    line-height: 1.05;
+  }
+
+  .grid {
+    width: 100%;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+  }
+
+  .cell {
+    min-width: 0;
+    min-height: 0;
+    font-size: 20px;
+  }
+
+  .dicePanel {
+    width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+/* Small phones */
+@media (max-width: 520px) {
+  .gamePage {
+    padding: 8px;
+  }
+
+  .boardCard {
+    padding: 14px;
+    border-radius: 22px;
+  }
+
+  .gameHeader h1 {
+    font-size: 28px;
+  }
+
+  .gameHeader p {
+    font-size: 15px;
+  }
+
+  .messageBox {
+    font-size: 15px;
+    padding: 12px;
+  }
+
+  .dicePanel {
+    padding: 14px;
+  }
+
+  .diceDisplay {
+    width: 70px;
+    height: 70px;
+    font-size: 34px;
+  }
+
+  .diceButton {
+    width: 100%;
+    max-width: 220px;
+  }
+
+  .grid {
+    gap: 5px;
+    padding: 7px;
+    border-radius: 20px;
+  }
+
+  .cell {
+    border-radius: 12px;
+    font-size: 18px;
+  }
+
+  .sidePanel {
+    width: 100%;
+  }
+
+  .panelCard {
+    padding: 14px;
+  }
+}
