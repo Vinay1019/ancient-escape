@@ -7,6 +7,11 @@ import {
   query,
   orderBy,
   serverTimestamp,
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  onSnapshot,
 } from "firebase/firestore";
 
 import {
@@ -76,4 +81,91 @@ export async function getAllMoveRecords() {
     id: doc.id,
     ...doc.data(),
   }));
+}
+
+export async function createOnlineRoom(roomData) {
+  try {
+    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const roomRef = doc(db, "ancient_escape_rooms", roomCode);
+
+    await setDoc(roomRef, {
+      roomCode,
+      status: "waiting",
+      hostJoined: true,
+      guestJoined: false,
+      currentTurn: "host",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...roomData,
+    });
+
+    return roomCode;
+  } catch (error) {
+    console.error("Create online room failed:", error);
+    throw error;
+  }
+}
+
+export async function joinOnlineRoom(roomCode, guestData) {
+  try {
+    const cleanRoomCode = roomCode.trim().toUpperCase();
+    const roomRef = doc(db, "ancient_escape_rooms", cleanRoomCode);
+    const roomSnap = await getDoc(roomRef);
+
+    if (!roomSnap.exists()) {
+      throw new Error("Room not found");
+    }
+
+    const roomData = roomSnap.data();
+
+    if (roomData.guestJoined) {
+      throw new Error("Room already has two players");
+    }
+
+    await updateDoc(roomRef, {
+      guestJoined: true,
+      guest: guestData,
+      status: "ready",
+      updatedAt: serverTimestamp(),
+    });
+
+    return cleanRoomCode;
+  } catch (error) {
+    console.error("Join online room failed:", error);
+    throw error;
+  }
+}
+
+export function listenOnlineRoom(roomCode, callback) {
+  const cleanRoomCode = roomCode.trim().toUpperCase();
+  const roomRef = doc(db, "ancient_escape_rooms", cleanRoomCode);
+
+  return onSnapshot(
+    roomRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.data());
+      }
+    },
+    (error) => {
+      console.error("Listen online room failed:", error);
+    }
+  );
+}
+
+export async function updateOnlineRoom(roomCode, updates) {
+  try {
+    const cleanRoomCode = roomCode.trim().toUpperCase();
+    const roomRef = doc(db, "ancient_escape_rooms", cleanRoomCode);
+
+    await updateDoc(roomRef, {
+      ...updates,
+      updatedAt: serverTimestamp(),
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Update online room failed:", error);
+    return false;
+  }
 }

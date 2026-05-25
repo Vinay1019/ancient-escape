@@ -7,6 +7,10 @@ import {
   listenToAuth,
   isAdminUser,
   getAllMoveRecords,
+  createOnlineRoom,
+  joinOnlineRoom,
+  listenOnlineRoom,
+  updateOnlineRoom,
 } from "./firebase";
 
 const GRID_SIZE = 9;
@@ -556,6 +560,12 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [sessionId, setSessionId] = useState(() => `AE-${Date.now()}-${Math.floor(Math.random() * 10000)}`);
   const [onlineSaveStatus, setOnlineSaveStatus] = useState("Ready");
+  const [onlineRoomCode, setOnlineRoomCode] = useState("");
+  const [joinRoomCode, setJoinRoomCode] = useState("");
+  const [onlineRole, setOnlineRole] = useState("");
+  const [onlineRoomStatus, setOnlineRoomStatus] = useState("");
+  const [onlineRoomData, setOnlineRoomData] = useState(null);
+  const [copiedRoomLink, setCopiedRoomLink] = useState(false);
   const [diceValue, setDiceValue] = useState(null);
   const [hasRolled, setHasRolled] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
@@ -613,6 +623,47 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const roomFromLink = params.get("room");
+
+    if (roomFromLink) {
+      setJoinRoomCode(roomFromLink.trim().toUpperCase());
+      setModal("online");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!onlineRoomCode) return;
+
+    const unsubscribe = listenOnlineRoom(onlineRoomCode, (room) => {
+      setOnlineRoomData(room);
+
+      if (room?.gameState) {
+        setGame(room.gameState.game || 1);
+        setTurn(room.gameState.turn || 1);
+        setPlayer(room.gameState.player || PARTICIPANT_START);
+        setAi(room.gameState.ai || AI_START);
+        setWalls(new Set(room.gameState.walls || []));
+        setDiceValue(room.gameState.diceValue || null);
+        setHasRolled(Boolean(room.gameState.hasRolled));
+        setResult(room.gameState.result || null);
+        setMessage(room.gameState.message || "Online game synced.");
+      }
+
+      if (room?.status === "ready" && screen === "onlineWaiting") {
+        setScreen("game");
+      }
+
+      if (room?.status === "ready" && modal === "onlineRoom") {
+        setModal(null);
+        setScreen("game");
+      }
+    });
+
+    return () => unsubscribe();
+  }, [onlineRoomCode, screen, modal]);
 
   useEffect(() => {
     if (logs.length === 0) return;
@@ -766,15 +817,34 @@ export default function App() {
     setScreen("summary");
   }
 
-  function rollDice() {
+  async function rollDice() {
     if (result || screen !== "game" || hasRolled) return;
 
     const roll = Math.floor(Math.random() * 6) + 1;
+    const rollMessage = `${participantInitials || "Player"} rolled ${roll}. Choose one highlighted route.`;
 
     setDiceValue(roll);
     setHasRolled(true);
     setTurnStartedAt(Date.now());
-    setMessage(`${participantInitials || "Player"} rolled ${roll}. Choose one highlighted route.`);
+    setMessage(rollMessage);
+
+    if (onlineRoomCode) {
+      await updateOnlineRoom(onlineRoomCode, {
+        status: "ready",
+        lastActionBy: onlineRole || "player",
+        gameState: {
+          game,
+          turn,
+          player,
+          ai,
+          walls: Array.from(walls),
+          diceValue: roll,
+          hasRolled: true,
+          result,
+          message: rollMessage,
+        },
+      });
+    }
   }
 
   async function movePlayer(target) {
@@ -931,6 +1001,27 @@ export default function App() {
     setHasRolled(false);
     setTurnStartedAt(Date.now());
 
+    if (onlineRoomCode) {
+      await updateOnlineRoom(onlineRoomCode, {
+        status: status === "playing" ? "ready" : "finished",
+        lastActionBy: onlineRole || "player",
+        gameState: {
+          game,
+          turn: turn + 1,
+          player: finalPlayer,
+          ai: nextAi,
+          walls: Array.from(walls),
+          diceValue: null,
+          hasRolled: false,
+          result: status,
+          message:
+            status === "playing"
+              ? `${participantInitials} moved. Roll again.`
+              : roundEndReason,
+        },
+      });
+    }
+
     setOnlineSaveStatus("Saving...");
 
     saveMoveToFirebase(row).then((saved) => {
@@ -969,6 +1060,86 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [playerOptions, result, screen]);
+
+  async function createRoomAndShare() {
+    if (!canStart) {
+      setModal("validation");
+      return;
+    }
+
+    try {
+      const startingWalls = createWalls(1, settings.wallCount);
+
+      const roomCode = await createOnlineRoom({
+        host: {
+          participantId: participantInfo.normalizedId,
+          initials: participantInitials,
+          emoji: participantEmoji,
+          age,
+          gender,
+        },
+        difficulty,
+        selectedTheme,
+        gameState: {
+          game: 1,
+          turn: 1,
+          player: PARTICIPANT_START,
+          ai: AI_START,
+          walls: Array.from(startingWalls),
+          diceValue: null,
+          hasRolled: false,
+          result: null,
+          message: "Waiting for second player to join.",
+        },
+      });
+
+      setOnlineRoomCode(roomCode);
+      setOnlineRole("host");
+      setOnlineRoomStatus("Room created. Share the room code or link with your friend.");
+      setCopiedRoomLink(false);
+      setModal("onlineRoom");
+    } catch (error) {
+      console.error(error);
+      setOnlineRoomStatus("Unable to create online room. Check Firebase rules.");
+    }
+  }
+
+  async function joinRoom() {
+    if (!canStart) {
+      setModal("validation");
+      return;
+    }
+
+    if (!joinRoomCode.trim()) {
+      setOnlineRoomStatus("Enter a room code first.");
+      return;
+    }
+
+    try {
+      const roomCode = await joinOnlineRoom(joinRoomCode, {
+        participantId: participantInfo.normalizedId,
+        initials: participantInitials,
+        emoji: participantEmoji,
+        age,
+        gender,
+      });
+
+      setOnlineRoomCode(roomCode);
+      setOnlineRole("guest");
+      setOnlineRoomStatus("Joined room successfully.");
+      setModal(null);
+      setScreen("onlineWaiting");
+    } catch (error) {
+      console.error(error);
+      setOnlineRoomStatus("Room not found or already full.");
+    }
+  }
+
+  function copyRoomLink() {
+    const roomLink = `${window.location.origin}${window.location.pathname}?room=${onlineRoomCode}`;
+    navigator.clipboard.writeText(roomLink);
+    setCopiedRoomLink(true);
+  }
 
   function downloadAdminRows() {
     if (adminRows.length === 0) {
@@ -1170,6 +1341,39 @@ export default function App() {
     );
   }
 
+  if (screen === "onlineWaiting") {
+    return (
+      <div className="page centerPage">
+        <div className="summaryCard premiumPanel lightPanel">
+          <div className="badge darkBadge">Online Multiplayer</div>
+          <h1>Waiting Room</h1>
+
+          <p>
+            Room Code: <b>{onlineRoomCode}</b>
+          </p>
+
+          <p>{onlineRoomStatus || "Waiting for the other player to join..."}</p>
+
+          {onlineRoomData?.host && (
+            <p>
+              Host: <b>{onlineRoomData.host.initials}</b>
+            </p>
+          )}
+
+          {onlineRoomData?.guest && (
+            <p>
+              Guest: <b>{onlineRoomData.guest.initials}</b>
+            </p>
+          )}
+
+          <button className="secondaryButton" onClick={() => setScreen("welcome")}>
+            Back Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (screen === "welcome") {
     return (
       <div className="homePage">
@@ -1337,13 +1541,61 @@ export default function App() {
                 <>
                   <h2>Online Multiplayer</h2>
                   <p>
-                    This button is ready on the home screen. True live multiplayer needs a backend room
-                    system, such as Firebase or Supabase.
+                    Create a Firebase room and share the room code with your friend, or join an existing room.
                   </p>
-                  <p>For now, share your current app link with friends so they can play the same version.</p>
-                  <button className="primaryButton" onClick={() => navigator.clipboard.writeText(window.location.href)}>
-                    Copy App Link
+
+                  <button className="primaryButton" onClick={createRoomAndShare}>
+                    Create Online Room
                   </button>
+
+                  <div style={{ marginTop: "18px" }}>
+                    <input
+                      value={joinRoomCode}
+                      onChange={(e) => setJoinRoomCode(e.target.value.toUpperCase())}
+                      placeholder="Enter room code"
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        borderRadius: "12px",
+                        border: "1px solid #c5a74a",
+                        marginBottom: "10px",
+                      }}
+                    />
+
+                    <button className="secondaryButton" onClick={joinRoom}>
+                      Join Room
+                    </button>
+                  </div>
+
+                  {onlineRoomStatus && (
+                    <p style={{ fontWeight: 800, color: "#9b3d3a" }}>
+                      {onlineRoomStatus}
+                    </p>
+                  )}
+                </>
+              )}
+
+              {modal === "onlineRoom" && (
+                <>
+                  <h2>Room Created</h2>
+
+                  <p>Share this room code or link with your friend.</p>
+
+                  <div className="installHint">
+                    Room Code: <b>{onlineRoomCode}</b>
+                  </div>
+
+                  <button className="primaryButton" onClick={copyRoomLink}>
+                    Copy Room Link
+                  </button>
+
+                  {copiedRoomLink && (
+                    <p style={{ fontWeight: 800, color: "#1f7a3f" }}>
+                      Room link copied!
+                    </p>
+                  )}
+
+                  <p>Waiting for another player to join...</p>
                 </>
               )}
 
