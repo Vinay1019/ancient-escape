@@ -16,6 +16,7 @@ import {
 const GRID_SIZE = 9;
 const GAMES_PER_SESSION = 3;
 const LIVES_PER_ROUND = 3;
+const DICE_DECISION_SECONDS = 10;
 const PARTICIPANT_START = { r: 0, c: 0 };
 const AI_START = { r: 0, c: 8 };
 const GOAL = { r: 8, c: 4 };
@@ -587,6 +588,9 @@ export default function App() {
   const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
   const currentReactionSeconds = Math.round((now - turnStartedAt) / 1000);
   const totalElapsedSeconds = Math.round((now - gameStartedAt) / 1000);
+  const diceCountdownSeconds = hasRolled
+    ? Math.max(0, DICE_DECISION_SECONDS - currentReactionSeconds)
+    : DICE_DECISION_SECONDS;
 
   const participantInfo = parseParticipantId(participantId);
   const participantIdValid = participantInfo.isValid;
@@ -828,7 +832,7 @@ const activeTheme =
     if (result || screen !== "game" || hasRolled) return;
 
     const roll = Math.floor(Math.random() * 6) + 1;
-    const rollMessage = `${participantInitials || "Player"} rolled ${roll}. Choose one highlighted route.`;
+    const rollMessage = `${participantInitials || "Player"} rolled ${roll}. Choose one highlighted route within ${DICE_DECISION_SECONDS} seconds.`;
 
     setDiceValue(roll);
     setHasRolled(true);
@@ -1101,6 +1105,51 @@ const activeTheme =
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!hasRolled || result || screen !== "game") return;
+    if (currentReactionSeconds < DICE_DECISION_SECONDS) return;
+
+    const timeoutMessage = `${participantInitials || "Player"} took more than ${DICE_DECISION_SECONDS} seconds. Dice expired. Roll again to continue.`;
+
+    setDiceValue(null);
+    setHasRolled(false);
+    setMessage(timeoutMessage);
+    setTurnStartedAt(Date.now());
+
+    if (onlineRoomCode) {
+      updateOnlineRoom(onlineRoomCode, {
+        status: "ready",
+        lastActionBy: onlineRole || "player",
+        gameState: {
+          game,
+          turn,
+          player,
+          ai,
+          walls: Array.from(walls),
+          diceValue: null,
+          hasRolled: false,
+          participantLives,
+          result,
+          message: timeoutMessage,
+        },
+      });
+    }
+  }, [
+    hasRolled,
+    result,
+    screen,
+    currentReactionSeconds,
+    participantInitials,
+    onlineRoomCode,
+    onlineRole,
+    game,
+    turn,
+    player,
+    ai,
+    walls,
+    participantLives,
+  ]);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -1880,6 +1929,12 @@ const activeTheme =
                 ? `Move exactly ${diceValue} block${diceValue === 1 ? "" : "s"} using one highlighted option.`
                 : "Roll first. Your movement options will appear after the dice roll."}
             </p>
+
+            {hasRolled && (
+              <div className={diceCountdownSeconds <= 3 ? "diceCountdown warning" : "diceCountdown"}>
+                ⏳ Time left to choose: <b>{diceCountdownSeconds}s</b>
+              </div>
+            )}
           </div>
 
           <div className="grid" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
