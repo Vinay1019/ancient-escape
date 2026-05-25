@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import {
   saveMoveToFirebase,
@@ -578,6 +578,7 @@ export default function App() {
   const [participantLives, setParticipantLives] = useState(LIVES_PER_ROUND);
   const [guardianDiceValue, setGuardianDiceValue] = useState(null);
   const [lastGuardianMove, setLastGuardianMove] = useState("Waiting");
+  const processedOnlineResultKeysRef = useRef(new Set());
 
   const settings = DIFFICULTY[difficulty];
   const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
@@ -677,8 +678,39 @@ const activeTheme =
         setHasRolled(Boolean(room.gameState.hasRolled));
         setParticipantLives(room.gameState.participantLives ?? LIVES_PER_ROUND);
         setCurrentActor(room.gameState.currentActor || "participant");
-        setResult(room.gameState.result && room.gameState.result !== "playing" ? room.gameState.result : null);
+
+        const syncedResult = room.gameState.result && room.gameState.result !== "playing" ? room.gameState.result : null;
+        setResult(syncedResult);
         setMessage(room.gameState.message || "Online game synced.");
+
+        if (syncedResult) {
+          const syncedGame = room.gameState.game || 1;
+          const resultKey = `${syncedGame}-${syncedResult}`;
+
+          if (!processedOnlineResultKeysRef.current.has(resultKey)) {
+            processedOnlineResultKeysRef.current.add(resultKey);
+
+            if (syncedResult === "escaped") {
+              setLastRoundWinner("Participant");
+              setLastRoundReason(`${participantInitials || "Participant"} reached the goal`);
+              setWins((w) => w + 1);
+            } else if (syncedResult === "guardian_killed_participant") {
+              setLastRoundWinner("Guardian");
+              setLastRoundReason(`${participantInitials || "Participant"} lost all ${LIVES_PER_ROUND} lives`);
+              setLosses((l) => l + 1);
+            } else {
+              setLastRoundWinner("Guardian");
+              setLastRoundReason("Guardian protected the temple until the turn limit");
+              setLosses((l) => l + 1);
+            }
+
+            setLastRoundGame(syncedGame);
+          }
+
+          if (screen === "game") {
+            setScreen("roundComplete");
+          }
+        }
       }
 
       if (room?.status === "ready" && screen === "onlineWaiting") {
@@ -692,7 +724,7 @@ const activeTheme =
     });
 
     return () => unsubscribe();
-  }, [onlineRoomCode, screen, modal]);
+  }, [onlineRoomCode, screen, modal, participantInitials]);
 
   useEffect(() => {
     if (logs.length === 0) return;
@@ -773,6 +805,7 @@ const activeTheme =
     setGuardianDiceValue(null);
     setLastGuardianMove("Waiting");
     setCurrentActor("participant");
+    processedOnlineResultKeysRef.current.clear();
     setGameStartedAt(Date.now());
     setTurnStartedAt(Date.now());
 
@@ -796,6 +829,7 @@ const activeTheme =
     setGuardianDiceValue(null);
     setLastGuardianMove("Waiting");
     setCurrentActor("participant");
+    processedOnlineResultKeysRef.current.clear();
     setMessage("Roll the dice to reveal your movement options.");
     setGameStartedAt(Date.now());
     setTurnStartedAt(Date.now());
@@ -804,6 +838,10 @@ const activeTheme =
 
   function finishGame(status) {
     setResult(status);
+
+    if (onlineRoomCode && status && status !== "playing") {
+      processedOnlineResultKeysRef.current.add(`${game}-${status}`);
+    }
 
     let winner = "";
     let reason = "";
@@ -833,13 +871,52 @@ const activeTheme =
     setScreen("roundComplete");
   }
 
-  function continueAfterRound() {
+  async function continueAfterRound() {
     if (game >= totalGames) {
       setScreen("summary");
       return;
     }
 
-    resetLevel(game + 1);
+    const nextGame = game + 1;
+    const nextWalls = createWalls(nextGame, settings.wallCount);
+    const nextMessage = "New round started. Participant rolls first.";
+
+    setGame(nextGame);
+    setTurn(1);
+    setWalls(nextWalls);
+    setPlayer(PARTICIPANT_START);
+    setAi(AI_START);
+    setResult(null);
+    setMessage(nextMessage);
+    setDiceValue(null);
+    setHasRolled(false);
+    setParticipantLives(LIVES_PER_ROUND);
+    setGuardianDiceValue(null);
+    setLastGuardianMove("Waiting");
+    setCurrentActor("participant");
+    setTurnStartedAt(Date.now());
+
+    if (onlineRoomCode) {
+      await updateOnlineRoom(onlineRoomCode, {
+        status: "ready",
+        currentTurn: "participant",
+        lastActionBy: onlineRole || "player",
+        gameState: {
+          game: nextGame,
+          turn: 1,
+          player: PARTICIPANT_START,
+          ai: AI_START,
+          walls: Array.from(nextWalls),
+          diceValue: null,
+          hasRolled: false,
+          participantLives: LIVES_PER_ROUND,
+          currentActor: "participant",
+          result: null,
+          message: nextMessage,
+        },
+      });
+    }
+
     setScreen("game");
   }
 
@@ -2225,7 +2302,7 @@ const activeTheme =
         <aside className="sidePanel">
           <section className="panelCard premiumPanel darkPanel">
             <h2>Guardian Protection Strategy</h2>
-            <p>After {participantInitials || "the participant"} moves, Guardian rolls automatically. The participant wins only by reaching the goal.</p>
+            <p>In online mode, Participant and Guardian take turns rolling manually. The participant wins only by reaching the goal.</p>
 
             <div className="guardianDicePanel">
               <div className="guardianDiceValue">{guardianDiceValue || "🎲"}</div>
@@ -2268,25 +2345,23 @@ const activeTheme =
             {hasRolled && playerOptions.length === 0 && <p>No valid route available for this dice roll. Restart level or roll again after this rule is adjusted.</p>}
 
             {playerOptions.map((o) => {
-            const isGuardianTurn = onlineRoomCode && currentActor === "guardian";
-            const routeRisk = o.risk || (o.isCapture ? "High" : "Medium");
+              const isGuardianTurn = onlineRoomCode && currentActor === "guardian";
+              const routeRisk = o.risk || (o.isCapture ? "High" : "Medium");
 
-            return (
-              <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
-                <span><b>{isGuardianTurn ? "🛡️" : o.icon} {o.move}</b></span>
-
-                <span className={`risk ${routeRisk.toLowerCase()}`}>
-                  {isGuardianTurn ? (o.isCapture ? "Capture route" : "Blocking route") : `${routeRisk} risk`}
-                </span>
-
-                <small>
-                  {isGuardianTurn
-                    ? `Steps: ${o.stepsMoved} · Distance to participant: ${o.distanceToPlayer}${o.isCapture ? " · Capture move" : ""}`
-                    : `Steps: ${o.stepsMoved} · Goal distance: ${o.distanceToGoal} · Guardian distance: ${o.distanceFromAI}`}
-                </small>
-              </button>
-            );
-          })}
+              return (
+                <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
+                  <span><b>{isGuardianTurn ? "🛡️" : o.icon} {o.move}</b></span>
+                  <span className={`risk ${routeRisk.toLowerCase()}`}>
+                    {isGuardianTurn ? (o.isCapture ? "Capture route" : "Blocking route") : `${routeRisk} risk`}
+                  </span>
+                  <small>
+                    {isGuardianTurn
+                      ? `Steps: ${o.stepsMoved} · Distance to participant: ${o.distanceToPlayer}${o.isCapture ? " · Capture move" : ""}`
+                      : `Steps: ${o.stepsMoved} · Goal distance: ${o.distanceToGoal} · Guardian distance: ${o.distanceFromAI}`}
+                  </small>
+                </button>
+              );
+            })}
           </section>
 
           <section className="panelCard premiumPanel lightPanel legend">
