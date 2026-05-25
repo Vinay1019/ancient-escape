@@ -122,9 +122,19 @@ export async function joinOnlineRoom(roomCode, guestData) {
       throw new Error("Room already has two players");
     }
 
+    const hostRole = roomData.host?.gameRole || "participant";
+    const guestRole = guestData.gameRole || (hostRole === "participant" ? "guardian" : "participant");
+
+    if (guestRole === hostRole) {
+      throw new Error(`The ${guestRole} role is already taken. Choose the other role.`);
+    }
+
     await updateDoc(roomRef, {
       guestJoined: true,
-      guest: guestData,
+      guest: {
+        ...guestData,
+        gameRole: guestRole,
+      },
       status: "ready",
       updatedAt: serverTimestamp(),
     });

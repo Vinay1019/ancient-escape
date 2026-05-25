@@ -567,6 +567,8 @@ export default function App() {
   const [onlineRoomCode, setOnlineRoomCode] = useState("");
   const [joinRoomCode, setJoinRoomCode] = useState("");
   const [onlineRole, setOnlineRole] = useState("");
+  const [selectedOnlineGameRole, setSelectedOnlineGameRole] = useState("participant");
+  const [currentActor, setCurrentActor] = useState("participant");
   const [onlineRoomStatus, setOnlineRoomStatus] = useState("");
   const [onlineRoomData, setOnlineRoomData] = useState(null);
   const [copiedRoomLink, setCopiedRoomLink] = useState(false);
@@ -581,10 +583,15 @@ export default function App() {
   const totalGames = mode === "Practice" ? 1 : GAMES_PER_SESSION;
   const aiOptions = useMemo(() => aiMoveOptions(ai, player, walls, settings), [ai, player, walls, settings]);
   const guardianStats = useMemo(() => guardianPreview(aiOptions), [aiOptions]);
-  const playerOptions = useMemo(
-    () => (hasRolled && diceValue ? possibleDiceMoves(player, ai, walls, diceValue) : []),
-    [player, ai, walls, hasRolled, diceValue]
-  );
+  const playerOptions = useMemo(() => {
+    if (!hasRolled || !diceValue) return [];
+
+    if (onlineRoomCode && currentActor === "guardian") {
+      return possibleGuardianDiceMoves(ai, player, walls, diceValue);
+    }
+
+    return possibleDiceMoves(player, ai, walls, diceValue);
+  }, [player, ai, walls, hasRolled, diceValue, onlineRoomCode, currentActor]);
   const progress = Math.min(100, Math.round((turn / settings.maxTurns) * 100));
   const currentReactionSeconds = Math.round((now - turnStartedAt) / 1000);
   const totalElapsedSeconds = Math.round((now - gameStartedAt) / 1000);
@@ -599,6 +606,14 @@ export default function App() {
   const canStart = participantIdValid && ageValid;
   const suggestedEmoji = getSuggestedEmoji(age, gender);
   const participantEmoji = selectedEmoji || suggestedEmoji;
+  const myOnlineGameRole = onlineRoomCode
+    ? onlineRole === "host"
+      ? onlineRoomData?.host?.gameRole
+      : onlineRoomData?.guest?.gameRole
+    : "";
+  const isOnlineParticipantTurn = !onlineRoomCode || myOnlineGameRole === currentActor;
+  const currentActorLabel = currentActor === "guardian" ? "Guardian" : "Participant";
+  const myRoleLabel = myOnlineGameRole === "guardian" ? "Guardian" : "Participant";
 
 const activeTheme =
   BACKGROUND_THEMES.find((theme) => theme.id === selectedTheme) ||
@@ -661,7 +676,8 @@ const activeTheme =
         setDiceValue(room.gameState.diceValue || null);
         setHasRolled(Boolean(room.gameState.hasRolled));
         setParticipantLives(room.gameState.participantLives ?? LIVES_PER_ROUND);
-        setResult(room.gameState.result || null);
+        setCurrentActor(room.gameState.currentActor || "participant");
+        setResult(room.gameState.result && room.gameState.result !== "playing" ? room.gameState.result : null);
         setMessage(room.gameState.message || "Online game synced.");
       }
 
@@ -726,6 +742,7 @@ const activeTheme =
     setParticipantLives(LIVES_PER_ROUND);
     setGuardianDiceValue(null);
     setLastGuardianMove("Waiting");
+    setCurrentActor("participant");
     setTurnStartedAt(Date.now());
   }
 
@@ -755,6 +772,7 @@ const activeTheme =
     setHasRolled(false);
     setGuardianDiceValue(null);
     setLastGuardianMove("Waiting");
+    setCurrentActor("participant");
     setGameStartedAt(Date.now());
     setTurnStartedAt(Date.now());
 
@@ -777,6 +795,7 @@ const activeTheme =
     setParticipantLives(LIVES_PER_ROUND);
     setGuardianDiceValue(null);
     setLastGuardianMove("Waiting");
+    setCurrentActor("participant");
     setMessage("Roll the dice to reveal your movement options.");
     setGameStartedAt(Date.now());
     setTurnStartedAt(Date.now());
@@ -831,8 +850,14 @@ const activeTheme =
   async function rollDice() {
     if (result || screen !== "game" || hasRolled) return;
 
+    if (onlineRoomCode && myOnlineGameRole && myOnlineGameRole !== currentActor) {
+      setMessage(`Waiting for ${currentActorLabel} to roll the dice.`);
+      return;
+    }
+
     const roll = Math.floor(Math.random() * 6) + 1;
-    const rollMessage = `${participantInitials || "Player"} rolled ${roll}. Choose one highlighted route within ${DICE_DECISION_SECONDS} seconds.`;
+    const rollerName = onlineRoomCode ? currentActorLabel : participantInitials || "Player";
+    const rollMessage = `${rollerName} rolled ${roll}. Choose one highlighted route within ${DICE_DECISION_SECONDS} seconds.`;
 
     setDiceValue(roll);
     setHasRolled(true);
@@ -852,15 +877,214 @@ const activeTheme =
           diceValue: roll,
           hasRolled: true,
           participantLives,
-          result,
+          currentActor,
+          result: result && result !== "playing" ? result : null,
           message: rollMessage,
         },
       });
     }
   }
 
+  async function moveOnline(target) {
+    if (result || screen !== "game" || !hasRolled || !diceValue) return;
+
+    if (myOnlineGameRole && myOnlineGameRole !== currentActor) {
+      setMessage(`Waiting for ${currentActorLabel} to choose a move.`);
+      return;
+    }
+
+    const moveTime = Date.now();
+    const reactionTimeMs = moveTime - turnStartedAt;
+    const totalElapsedMs = moveTime - gameStartedAt;
+
+    let nextPlayer = player;
+    let nextAi = ai;
+    let nextLives = participantLives;
+    let nextCaptureCount = captureCount;
+    let nextStatus = "playing";
+    let nextWinner = "";
+    let nextReason = "";
+    let nextActor = "participant";
+    let capturedThisTurn = false;
+    let participantResetToStart = false;
+    let guardianMoveRoute = "Guardian did not move";
+    let guardianStrategy = "Waiting";
+    let aiChosenMove = "No move";
+    let aiPreview = "Online turn";
+    let messageText = "";
+
+    if (currentActor === "participant") {
+      nextPlayer = { r: target.r, c: target.c };
+
+      if (same(nextPlayer, ai)) {
+        capturedThisTurn = true;
+        nextCaptureCount += 1;
+        nextLives = Math.max(participantLives - 1, 0);
+        nextPlayer = PARTICIPANT_START;
+        nextAi = AI_START;
+        participantResetToStart = true;
+        guardianStrategy = "Participant ran into Guardian";
+        guardianMoveRoute = "Guardian reset to start after life loss";
+        aiChosenMove = guardianMoveRoute;
+        aiPreview = `Participant landed on Guardian. Lives left: ${nextLives}.`;
+        nextActor = "participant";
+
+        if (nextLives <= 0) {
+          nextStatus = "guardian_killed_participant";
+          nextWinner = "Guardian";
+          nextReason = "Participant lost all lives";
+          messageText = "Participant lost all 3 lives. Guardian wins this round.";
+        } else {
+          messageText = `${participantInitials} has lost ${LIVES_PER_ROUND - nextLives} of ${LIVES_PER_ROUND} lives this round. Both participant and Guardian reset to start. Participant rolls again.`;
+        }
+      } else if (same(nextPlayer, GOAL)) {
+        nextStatus = "escaped";
+        nextWinner = "Participant";
+        nextReason = "Participant reached goal";
+        guardianStrategy = "Goal reached";
+        aiChosenMove = "None";
+        aiPreview = "Participant reached the goal. Participant wins this round.";
+        messageText = `${participantInitials} reached the goal and wins Round ${game}!`;
+      } else {
+        nextActor = "guardian";
+        aiChosenMove = "Waiting for Guardian";
+        aiPreview = "Participant moved. Guardian must roll and choose a blocking route.";
+        messageText = `${participantInitials} moved ${target.stepsMoved || diceValue} steps. Guardian turn: roll the dice and try to stop the participant reaching the goal.`;
+      }
+    } else {
+      nextAi = { r: target.r, c: target.c };
+      guardianMoveRoute = target.move || "Guardian move";
+      guardianStrategy = same(nextAi, player) ? "Capture" : "Protect goal path";
+      aiChosenMove = guardianMoveRoute;
+      aiPreview = `Guardian rolled ${diceValue} and moved to ${guardianStrategy.toLowerCase()}.`;
+      setGuardianDiceValue(diceValue);
+      setLastGuardianMove(guardianMoveRoute);
+
+      if (same(nextAi, player)) {
+        capturedThisTurn = true;
+        nextCaptureCount += 1;
+        nextLives = Math.max(participantLives - 1, 0);
+        nextPlayer = PARTICIPANT_START;
+        nextAi = AI_START;
+        participantResetToStart = true;
+        guardianMoveRoute = "Guardian reset to start after capture";
+        aiChosenMove = guardianMoveRoute;
+        setLastGuardianMove("Guardian reset to start");
+
+        if (nextLives <= 0) {
+          nextStatus = "guardian_killed_participant";
+          nextWinner = "Guardian";
+          nextReason = "Participant lost all lives";
+          messageText = "Participant lost all 3 lives. Guardian wins this round.";
+        } else {
+          messageText = `${participantInitials} has lost ${LIVES_PER_ROUND - nextLives} of ${LIVES_PER_ROUND} lives this round. Both participant and Guardian reset to start. Participant rolls again.`;
+        }
+      } else if (turn >= settings.maxTurns) {
+        nextStatus = "timeout";
+        nextWinner = "Guardian";
+        nextReason = "Guardian protected temple until turn limit";
+        messageText = `Guardian protected the temple and wins Round ${game}!`;
+      } else {
+        messageText = `Guardian moved ${target.stepsMoved || diceValue} step${(target.stepsMoved || diceValue) === 1 ? "" : "s"}. Participant turn: roll again and try to reach the goal.`;
+      }
+
+      nextActor = "participant";
+    }
+
+    const shouldAdvanceTurn = currentActor === "guardian" || nextStatus !== "playing" || capturedThisTurn;
+    const nextTurn = shouldAdvanceTurn ? turn + 1 : turn;
+
+    const row = {
+      sessionId,
+      participantId: participantInfo.normalizedId,
+      participantInitials,
+      age,
+      gender,
+      participantEmoji,
+      backgroundTheme: selectedTheme,
+      difficulty,
+      mode,
+      game,
+      turn,
+      diceRoll: diceValue,
+      stepsMoved: target.stepsMoved || diceValue,
+      capturedThisTurn,
+      captureCount: nextCaptureCount,
+      participantLivesRemaining: nextLives,
+      participantResetToStart,
+      guardianCaptureChance: 0,
+      guardianAlternativeChance: 0,
+      guardianDiceRoll: currentActor === "guardian" ? diceValue : 0,
+      guardianStepsMoved: currentActor === "guardian" ? target.stepsMoved || diceValue : 0,
+      guardianMoveRoute,
+      guardianStrategy,
+      participantRow: nextPlayer.r,
+      participantCol: nextPlayer.c,
+      aiRow: nextAi.r,
+      aiCol: nextAi.c,
+      participantMove: target.move,
+      aiPreview,
+      aiChosenMove,
+      risk: target.risk || "Medium",
+      goalDistance: target.distanceToGoal ?? manhattan(nextPlayer, GOAL),
+      aiDistance: target.distanceFromAI ?? manhattan(nextPlayer, nextAi),
+      reactionTimeMs,
+      reactionTimeSeconds: (reactionTimeMs / 1000).toFixed(2),
+      totalElapsedMs,
+      totalElapsedSeconds: (totalElapsedMs / 1000).toFixed(2),
+      result: nextStatus,
+      roundWinner: nextWinner,
+      roundEndReason: nextReason,
+      timestamp: new Date().toISOString(),
+    };
+
+    setLogs((oldLogs) => [...oldLogs, row]);
+    setPlayer(nextPlayer);
+    setAi(nextAi);
+    setCaptureCount(nextCaptureCount);
+    setParticipantLives(nextLives);
+    setCurrentActor(nextActor);
+    setTurn(nextTurn);
+    setDiceValue(null);
+    setHasRolled(false);
+    setTurnStartedAt(Date.now());
+    setMessage(messageText);
+
+    await updateOnlineRoom(onlineRoomCode, {
+      status: nextStatus === "playing" ? "ready" : "finished",
+      lastActionBy: onlineRole || "player",
+      gameState: {
+        game,
+        turn: nextTurn,
+        player: nextPlayer,
+        ai: nextAi,
+        walls: Array.from(walls),
+        diceValue: null,
+        hasRolled: false,
+        participantLives: nextLives,
+        currentActor: nextActor,
+        result: nextStatus === "playing" ? null : nextStatus,
+        message: messageText,
+      },
+    });
+
+    setOnlineSaveStatus("Saving...");
+    saveMoveToFirebase(row).then((saved) => {
+      setOnlineSaveStatus(saved ? "Saved online" : "Local only");
+    });
+
+    if (nextStatus !== "playing") {
+      finishGame(nextStatus);
+    }
+  }
+
   async function movePlayer(target) {
     if (result || screen !== "game" || !hasRolled || !diceValue) return;
+
+    if (onlineRoomCode) {
+      await moveOnline(target);
+      return;
+    }
 
     const moveTime = Date.now();
     const reactionTimeMs = moveTime - turnStartedAt;
@@ -1068,7 +1292,7 @@ const activeTheme =
           diceValue: null,
           hasRolled: false,
           participantLives: nextParticipantLives,
-          result: status,
+          result: status === "playing" ? null : status,
           message:
             status === "playing"
               ? `${participantInitials} moved. Roll again.`
@@ -1110,7 +1334,9 @@ const activeTheme =
     if (!hasRolled || result || screen !== "game") return;
     if (currentReactionSeconds < DICE_DECISION_SECONDS) return;
 
-    const timeoutMessage = `${participantInitials || "Player"} took more than ${DICE_DECISION_SECONDS} seconds. Dice expired. Roll again to continue.`;
+    if (onlineRoomCode && myOnlineGameRole && myOnlineGameRole !== currentActor) return;
+
+    const timeoutMessage = `${currentActorLabel} took more than ${DICE_DECISION_SECONDS} seconds. Dice expired. Roll again to continue.`;
 
     setDiceValue(null);
     setHasRolled(false);
@@ -1130,7 +1356,8 @@ const activeTheme =
           diceValue: null,
           hasRolled: false,
           participantLives,
-          result,
+          currentActor,
+          result: result && result !== "playing" ? result : null,
           message: timeoutMessage,
         },
       });
@@ -1149,6 +1376,9 @@ const activeTheme =
     ai,
     walls,
     participantLives,
+    myOnlineGameRole,
+    currentActor,
+    currentActorLabel,
   ]);
 
   useEffect(() => {
@@ -1182,6 +1412,7 @@ const activeTheme =
           emoji: participantEmoji,
           age,
           gender,
+          gameRole: selectedOnlineGameRole,
         },
         difficulty,
         selectedTheme,
@@ -1194,6 +1425,7 @@ const activeTheme =
           diceValue: null,
           hasRolled: false,
           participantLives: LIVES_PER_ROUND,
+          currentActor: "participant",
           result: null,
           message: "Waiting for second player to join.",
         },
@@ -1201,7 +1433,7 @@ const activeTheme =
 
       setOnlineRoomCode(roomCode);
       setOnlineRole("host");
-      setOnlineRoomStatus("Room created. Share the room code or link with your friend.");
+      setOnlineRoomStatus(`Room created as ${selectedOnlineGameRole === "guardian" ? "Guardian" : "Participant"}. Share the room code or link with your friend.`);
       setCopiedRoomLink(false);
       setModal("onlineRoom");
     } catch (error) {
@@ -1228,11 +1460,12 @@ const activeTheme =
         emoji: participantEmoji,
         age,
         gender,
+        gameRole: selectedOnlineGameRole,
       });
 
       setOnlineRoomCode(roomCode);
       setOnlineRole("guest");
-      setOnlineRoomStatus("Joined room successfully.");
+      setOnlineRoomStatus(`Joined room successfully as ${selectedOnlineGameRole === "guardian" ? "Guardian" : "Participant"}.`);
       setModal(null);
       setScreen("onlineWaiting");
     } catch (error) {
@@ -1462,13 +1695,13 @@ const activeTheme =
 
           {onlineRoomData?.host && (
             <p>
-              Host: <b>{onlineRoomData.host.initials}</b>
+              Host: <b>{onlineRoomData.host.initials}</b> ({onlineRoomData.host.gameRole || "participant"})
             </p>
           )}
 
           {onlineRoomData?.guest && (
             <p>
-              Guest: <b>{onlineRoomData.guest.initials}</b>
+              Guest: <b>{onlineRoomData.guest.initials}</b> ({onlineRoomData.guest.gameRole || "guardian"})
             </p>
           )}
 
@@ -1649,6 +1882,26 @@ const activeTheme =
                   <p>
                     Create a Firebase room and share the room code with your friend, or join an existing room.
                   </p>
+
+                  <div className="installHint" style={{ marginBottom: "14px" }}>
+                    <b>Choose your online role</b>
+                    <div className="buttonRow" style={{ marginTop: "10px" }}>
+                      <button
+                        type="button"
+                        className={selectedOnlineGameRole === "participant" ? "primaryButton" : "secondaryButton"}
+                        onClick={() => setSelectedOnlineGameRole("participant")}
+                      >
+                        {participantEmoji} Participant
+                      </button>
+                      <button
+                        type="button"
+                        className={selectedOnlineGameRole === "guardian" ? "primaryButton" : "secondaryButton"}
+                        onClick={() => setSelectedOnlineGameRole("guardian")}
+                      >
+                        🛡️ Guardian
+                      </button>
+                    </div>
+                  </div>
 
                   <button className="primaryButton" onClick={createRoomAndShare}>
                     Create Online Room
@@ -1909,6 +2162,7 @@ const activeTheme =
               <div className="smallCaps">{mode} Mode</div>
               <h1>{activeTheme.color} {activeTheme.label} Maze</h1>
               <p>Game {game} of {totalGames} · Turn {turn} of {settings.maxTurns} · {difficulty} · Lives {participantLives}/{LIVES_PER_ROUND}</p>
+              {onlineRoomCode && <p className="saveStatusLine">🎮 Your role: {myRoleLabel} · Current turn: {currentActorLabel}</p>}
               <p className="timerLine">⏱️ Total: {totalElapsedSeconds}s · Current decision: {currentReactionSeconds}s</p>
               <p className="saveStatusLine">☁️ Online save: {onlineSaveStatus}</p>
             </div>
@@ -1921,8 +2175,8 @@ const activeTheme =
 
           <div className="dicePanel">
             <div className="diceDisplay">{diceValue || "🎲"}</div>
-            <button className="diceButton" onClick={rollDice} disabled={hasRolled || !!result}>
-              {hasRolled ? "Choose a route" : "Roll Dice"}
+            <button className="diceButton" onClick={rollDice} disabled={hasRolled || !!result || (onlineRoomCode && myOnlineGameRole && myOnlineGameRole !== currentActor)}>
+              {hasRolled ? "Choose a route" : onlineRoomCode && myOnlineGameRole && myOnlineGameRole !== currentActor ? `Waiting for ${currentActorLabel}` : "Roll Dice"}
             </button>
             <p>
               {hasRolled
@@ -2008,16 +2262,20 @@ const activeTheme =
           </section>
 
           <section className="panelCard premiumPanel lightPanel">
-            <h2>{participantInitials || "Your"} Dice Routes</h2>
+            <h2>{onlineRoomCode && currentActor === "guardian" ? "Guardian Dice Routes" : `${participantInitials || "Your"} Dice Routes`}</h2>
 
-            {!hasRolled && <p>Roll the dice to see available routes.</p>}
+            {!hasRolled && <p>{onlineRoomCode ? `${currentActorLabel} must roll the dice to see routes.` : "Roll the dice to see available routes."}</p>}
             {hasRolled && playerOptions.length === 0 && <p>No valid route available for this dice roll. Restart level or roll again after this rule is adjusted.</p>}
 
             {playerOptions.map((o) => (
               <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
                 <span><b>{o.icon} {o.move}</b></span>
                 <span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span>
-                <small>Steps: {o.stepsMoved} · Goal distance: {o.distanceToGoal} · Guardian distance: {o.distanceFromAI}</small>
+                <small>
+                  {onlineRoomCode && currentActor === "guardian"
+                    ? `Steps: ${o.stepsMoved} · Distance to participant: ${o.distanceToPlayer}${o.isCapture ? " · Capture move" : ""}`
+                    : `Steps: ${o.stepsMoved} · Goal distance: ${o.distanceToGoal} · Guardian distance: ${o.distanceFromAI}`}
+                </small>
               </button>
             ))}
           </section>
