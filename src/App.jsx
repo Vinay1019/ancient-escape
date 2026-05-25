@@ -2267,17 +2267,26 @@ const activeTheme =
             {!hasRolled && <p>{onlineRoomCode ? `${currentActorLabel} must roll the dice to see routes.` : "Roll the dice to see available routes."}</p>}
             {hasRolled && playerOptions.length === 0 && <p>No valid route available for this dice roll. Restart level or roll again after this rule is adjusted.</p>}
 
-            {playerOptions.map((o) => (
+            {playerOptions.map((o) => {
+            const isGuardianTurn = onlineRoomCode && currentActor === "guardian";
+            const routeRisk = o.risk || (o.isCapture ? "High" : "Medium");
+
+            return (
               <button key={`${o.r},${o.c}`} onClick={() => movePlayer(o)} className="moveButton">
-                <span><b>{o.icon} {o.move}</b></span>
-                <span className={`risk ${o.risk.toLowerCase()}`}>{o.risk} risk</span>
+                <span><b>{isGuardianTurn ? "🛡️" : o.icon} {o.move}</b></span>
+
+                <span className={`risk ${routeRisk.toLowerCase()}`}>
+                  {isGuardianTurn ? (o.isCapture ? "Capture route" : "Blocking route") : `${routeRisk} risk`}
+                </span>
+
                 <small>
-                  {onlineRoomCode && currentActor === "guardian"
+                  {isGuardianTurn
                     ? `Steps: ${o.stepsMoved} · Distance to participant: ${o.distanceToPlayer}${o.isCapture ? " · Capture move" : ""}`
                     : `Steps: ${o.stepsMoved} · Goal distance: ${o.distanceToGoal} · Guardian distance: ${o.distanceFromAI}`}
                 </small>
               </button>
-            ))}
+            );
+          })}
           </section>
 
           <section className="panelCard premiumPanel lightPanel legend">
