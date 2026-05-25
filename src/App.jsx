@@ -15,6 +15,7 @@ import {
 
 const GRID_SIZE = 9;
 const GAMES_PER_SESSION = 3;
+const LIVES_PER_ROUND = 3;
 const PARTICIPANT_START = { r: 0, c: 0 };
 const AI_START = { r: 0, c: 8 };
 const GOAL = { r: 8, c: 4 };
@@ -485,6 +486,7 @@ function downloadCSV(rows) {
     "stepsMoved",
     "capturedThisTurn",
     "captureCount",
+    "participantLivesRemaining",
     "participantResetToStart",
     "guardianCaptureChance",
     "guardianAlternativeChance",
@@ -570,6 +572,7 @@ export default function App() {
   const [diceValue, setDiceValue] = useState(null);
   const [hasRolled, setHasRolled] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
+  const [participantLives, setParticipantLives] = useState(LIVES_PER_ROUND);
   const [guardianDiceValue, setGuardianDiceValue] = useState(null);
   const [lastGuardianMove, setLastGuardianMove] = useState("Waiting");
 
@@ -653,6 +656,7 @@ const activeTheme =
         setWalls(new Set(room.gameState.walls || []));
         setDiceValue(room.gameState.diceValue || null);
         setHasRolled(Boolean(room.gameState.hasRolled));
+        setParticipantLives(room.gameState.participantLives ?? LIVES_PER_ROUND);
         setResult(room.gameState.result || null);
         setMessage(room.gameState.message || "Online game synced.");
       }
@@ -715,6 +719,7 @@ const activeTheme =
     setMessage("Roll the dice to reveal your movement options.");
     setDiceValue(null);
     setHasRolled(false);
+    setParticipantLives(LIVES_PER_ROUND);
     setGuardianDiceValue(null);
     setLastGuardianMove("Waiting");
     setTurnStartedAt(Date.now());
@@ -732,6 +737,7 @@ const activeTheme =
     setWins(0);
     setLosses(0);
     setCaptureCount(0);
+    setParticipantLives(LIVES_PER_ROUND);
     setLastRoundWinner("");
     setLastRoundReason("");
     setLastRoundGame(null);
@@ -764,6 +770,7 @@ const activeTheme =
     setResult(null);
     setDiceValue(null);
     setHasRolled(false);
+    setParticipantLives(LIVES_PER_ROUND);
     setGuardianDiceValue(null);
     setLastGuardianMove("Waiting");
     setMessage("Roll the dice to reveal your movement options.");
@@ -784,15 +791,10 @@ const activeTheme =
       reason = `${participantInitials} reached the goal`;
       finalMessage = `${participantInitials} reached the goal and wins Round ${game}!`;
       setWins((w) => w + 1);
-    } else if (status === "participant_killed_guardian") {
-      winner = "Participant";
-      reason = `${participantInitials} captured the Guardian`;
-      finalMessage = `${participantInitials} captured the Guardian and wins Round ${game}!`;
-      setWins((w) => w + 1);
     } else if (status === "guardian_killed_participant") {
       winner = "Guardian";
-      reason = `Guardian captured ${participantInitials}`;
-      finalMessage = `Guardian captured ${participantInitials} and wins Round ${game}!`;
+      reason = `${participantInitials} lost all ${LIVES_PER_ROUND} lives`;
+      finalMessage = `Guardian captured ${participantInitials} ${LIVES_PER_ROUND} times and wins Round ${game}!`;
       setLosses((l) => l + 1);
     } else {
       winner = "Guardian";
@@ -845,6 +847,7 @@ const activeTheme =
           walls: Array.from(walls),
           diceValue: roll,
           hasRolled: true,
+          participantLives,
           result,
           message: rollMessage,
         },
@@ -878,17 +881,26 @@ const activeTheme =
     let guardianAlternativeChance = 100;
     let aiPreview = "Guardian did not move";
 
-    // Participant can capture/kill Guardian by landing on Guardian.
-    // In that case the round ends immediately and participant wins the round.
+    // Participant cannot kill the Guardian. The only participant win condition is reaching the goal.
+    // Landing on the Guardian costs one life and sends the participant back to start.
     if (same(nextPlayerBeforeGuardian, ai)) {
-      status = "participant_killed_guardian";
-      roundWinner = "Participant";
-      roundEndReason = "Participant captured Guardian";
-      aiChosenMove = "None";
-      guardianStrategy = "Captured by participant";
-      aiPreview = "Participant landed on Guardian. Participant wins this round.";
+      capturedThisTurn = true;
+      nextCaptureCount = captureCount + 1;
+      const livesAfterCapture = participantLives - 1;
+      finalPlayer = PARTICIPANT_START;
+      nextAi = AI_START;
+      participantResetToStart = true;
+      aiChosenMove = "Reset to start";
+      guardianStrategy = "Participant ran into Guardian";
+      aiPreview = `Participant landed on Guardian and lost 1 life. Both participant and Guardian reset. Lives left: ${Math.max(livesAfterCapture, 0)}.`;
       setGuardianDiceValue(null);
-      setLastGuardianMove("Captured by participant");
+      setLastGuardianMove("Guardian reset to start");
+
+      if (livesAfterCapture <= 0) {
+        status = "guardian_killed_participant";
+        roundWinner = "Guardian";
+        roundEndReason = "Participant lost all lives";
+      }
     } else if (same(nextPlayerBeforeGuardian, GOAL)) {
       status = "escaped";
       roundWinner = "Participant";
@@ -924,15 +936,25 @@ const activeTheme =
         guardianStepsMoved = chosenGuardianRoute.stepsMoved || 0;
         guardianMoveRoute = chosenGuardianRoute.move || "Move";
 
-        // Guardian captures/kills Participant by landing on Participant.
-        // The round ends immediately and Guardian wins the round.
+        // Guardian captures the Participant by landing on Participant.
+        // Each capture removes 1 life. The round only ends after all 3 lives are gone.
         if (same(nextAi, nextPlayerBeforeGuardian)) {
           capturedThisTurn = true;
           nextCaptureCount = captureCount + 1;
-          status = "guardian_killed_participant";
-          roundWinner = "Guardian";
-          roundEndReason = "Guardian captured participant";
-          guardianStrategy = "Capture";
+          const livesAfterCapture = participantLives - 1;
+          finalPlayer = PARTICIPANT_START;
+          nextAi = AI_START;
+          participantResetToStart = true;
+          guardianStrategy = "Capture and reset";
+          guardianMoveRoute = `${guardianMoveRoute} → reset to start`;
+          aiChosenMove = guardianMoveRoute;
+          guardianStepsMoved = chosenGuardianRoute.stepsMoved || 0;
+
+          if (livesAfterCapture <= 0) {
+            status = "guardian_killed_participant";
+            roundWinner = "Guardian";
+            roundEndReason = "Participant lost all lives";
+          }
         }
 
         setGuardianDiceValue(guardianDiceRoll);
@@ -954,6 +976,24 @@ const activeTheme =
           : `Guardian rolled ${guardianDiceRoll}. Protect goal ${guardianDecision.blockChance}% | Move closer ${guardianAlternativeChance}%`;
     }
 
+    const nextParticipantLives = capturedThisTurn
+      ? Math.max(participantLives - 1, 0)
+      : participantLives;
+
+    // HARD RESET AFTER EVERY LOST LIFE:
+    // If there was any capture/contact this turn, both characters must go back
+    // to their original starting cells immediately, even if the round continues.
+    // This prevents the Guardian from staying at the capture square until the next round.
+    if (capturedThisTurn) {
+      finalPlayer = PARTICIPANT_START;
+      nextAi = AI_START;
+      participantResetToStart = true;
+      guardianMoveRoute = nextParticipantLives > 0
+        ? "Guardian reset to start after life loss"
+        : "Guardian reset to start after final capture";
+      aiChosenMove = guardianMoveRoute;
+    }
+
     const row = {
       sessionId,
       participantId: participantInfo.normalizedId,
@@ -970,6 +1010,7 @@ const activeTheme =
       stepsMoved: target.stepsMoved || diceValue,
       capturedThisTurn,
       captureCount: nextCaptureCount,
+      participantLivesRemaining: nextParticipantLives,
       participantResetToStart,
       guardianCaptureChance,
       guardianAlternativeChance,
@@ -1000,7 +1041,11 @@ const activeTheme =
     setLogs((oldLogs) => [...oldLogs, row]);
     setPlayer(finalPlayer);
     setAi(nextAi);
+    if (capturedThisTurn) {
+      setLastGuardianMove("Guardian reset to start");
+    }
     setCaptureCount(nextCaptureCount);
+    setParticipantLives(nextParticipantLives);
     setTurn((t) => t + 1);
     setDiceValue(null);
     setHasRolled(false);
@@ -1018,6 +1063,7 @@ const activeTheme =
           walls: Array.from(walls),
           diceValue: null,
           hasRolled: false,
+          participantLives: nextParticipantLives,
           result: status,
           message:
             status === "playing"
@@ -1035,6 +1081,10 @@ const activeTheme =
 
     if (status !== "playing") {
       finishGame(status);
+    } else if (capturedThisTurn) {
+      setMessage(
+        `${participantInitials} lost 1 life. Both participant and Guardian reset to start. Lives left: ${nextParticipantLives}. Roll again and try to reach the goal.`
+      );
     } else if (guardianStrategy === "Protect goal path") {
       setMessage(
         `${participantInitials} moved ${target.stepsMoved || diceValue} steps. Guardian rolled ${guardianDiceRoll} and moved to protect the goal path. Roll again.`
@@ -1093,6 +1143,7 @@ const activeTheme =
           walls: Array.from(startingWalls),
           diceValue: null,
           hasRolled: false,
+          participantLives: LIVES_PER_ROUND,
           result: null,
           message: "Waiting for second player to join.",
         },
@@ -1623,9 +1674,9 @@ const activeTheme =
                 <>
                   <h2>How to Play</h2>
                   <p>
-                    Reach 🏁 while avoiding the Guardian 🛡️. If the Guardian captures you, Guardian wins that round.
+                    Reach 🏁 while avoiding the Guardian 🛡️. You have 3 lives each round; if all lives are lost, Guardian wins that round.
                   </p>
-                  <p>Roll the dice, choose a route, and try to capture Guardian or reach the goal before Guardian captures you.</p>
+                  <p>Roll the dice, choose a route, and reach the goal before losing all 3 lives.</p>
                   <p>You can use highlighted cells, move buttons, or keyboard arrow keys.</p>
                 </>
               )}
@@ -1711,7 +1762,7 @@ const activeTheme =
           <div className="instructionGrid">
             <div><strong>{participantEmoji} Your role</strong><span>Move through the maze and reach the goal.</span></div>
             <div><strong>🏁 Goal</strong><span>Escape before the Guardian catches you.</span></div>
-            <div><strong>🛡️ Guardian</strong><span>If you land on Guardian, you win the round. If Guardian lands on you, Guardian wins the round.</span></div>
+            <div><strong>🛡️ Guardian</strong><span>You cannot defeat the Guardian. If you land on Guardian or Guardian lands on you, you lose 1 life and return to start.</span></div>
             <div><strong>📊 Probability</strong><span>Two likely Guardian moves are shown before you choose.</span></div>
             <div><strong>⚠️ Risk</strong><span>Some faster routes may be more dangerous.</span></div>
             <div><strong>🎲 Dice</strong><span>Roll the dice, then choose one highlighted route.</span></div>
@@ -1807,7 +1858,7 @@ const activeTheme =
             <div>
               <div className="smallCaps">{mode} Mode</div>
               <h1>{activeTheme.color} {activeTheme.label} Maze</h1>
-              <p>Game {game} of {totalGames} · Turn {turn} of {settings.maxTurns} · {difficulty}</p>
+              <p>Game {game} of {totalGames} · Turn {turn} of {settings.maxTurns} · {difficulty} · Lives {participantLives}/{LIVES_PER_ROUND}</p>
               <p className="timerLine">⏱️ Total: {totalElapsedSeconds}s · Current decision: {currentReactionSeconds}s</p>
               <p className="saveStatusLine">☁️ Online save: {onlineSaveStatus}</p>
             </div>
@@ -1864,7 +1915,7 @@ const activeTheme =
         <aside className="sidePanel">
           <section className="panelCard premiumPanel darkPanel">
             <h2>Guardian Protection Strategy</h2>
-            <p>After {participantInitials || "the participant"} moves, Guardian rolls automatically. Whoever captures wins the round.</p>
+            <p>After {participantInitials || "the participant"} moves, Guardian rolls automatically. The participant wins only by reaching the goal.</p>
 
             <div className="guardianDicePanel">
               <div className="guardianDiceValue">{guardianDiceValue || "🎲"}</div>
@@ -1891,7 +1942,8 @@ const activeTheme =
             </div>
 
             <div className="captureCountBox">
-              Captures this session: <b>{captureCount}</b>
+              Captures this session: <b>{captureCount}</b><br />
+              Lives this round: <b>{participantLives}/{LIVES_PER_ROUND}</b>
             </div>
 
             <div className="guardianMoveBox">
