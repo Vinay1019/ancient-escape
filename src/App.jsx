@@ -892,7 +892,7 @@ const activeTheme =
       participantResetToStart = true;
       aiChosenMove = "Reset to start";
       guardianStrategy = "Participant ran into Guardian";
-      aiPreview = `Participant landed on Guardian and lost 1 life. Both participant and Guardian reset. Lives left: ${Math.max(livesAfterCapture, 0)}.`;
+      aiPreview = `Participant landed on Guardian. Lives lost this round: ${LIVES_PER_ROUND - Math.max(livesAfterCapture, 0)}/${LIVES_PER_ROUND}. Both participant and Guardian reset. Lives left: ${Math.max(livesAfterCapture, 0)}.`;
       setGuardianDiceValue(null);
       setLastGuardianMove("Guardian reset to start");
 
@@ -1082,8 +1082,9 @@ const activeTheme =
     if (status !== "playing") {
       finishGame(status);
     } else if (capturedThisTurn) {
+      const livesLostThisRound = LIVES_PER_ROUND - nextParticipantLives;
       setMessage(
-        `${participantInitials} lost 1 life. Both participant and Guardian reset to start. Lives left: ${nextParticipantLives}. Roll again and try to reach the goal.`
+        `${participantInitials} has lost ${livesLostThisRound} of ${LIVES_PER_ROUND} lives this round. Both participant and Guardian reset to start. Lives left: ${nextParticipantLives}. Roll again and try to reach the goal.`
       );
     } else if (guardianStrategy === "Protect goal path") {
       setMessage(
