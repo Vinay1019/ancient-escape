@@ -52,6 +52,7 @@ const BACKGROUND_THEMES = [
   { id: "night", label: "Night", color: "⚫" },
 ];
 
+
 const keyOf = (p) => `${p.r},${p.c}`;
 const same = (a, b) => a.r === b.r && a.c === b.c;
 const manhattan = (a, b) => Math.abs(a.r - b.r) + Math.abs(a.c - b.c);
@@ -591,6 +592,10 @@ export default function App() {
   const canStart = participantIdValid && ageValid;
   const suggestedEmoji = getSuggestedEmoji(age, gender);
   const participantEmoji = selectedEmoji || suggestedEmoji;
+
+const activeTheme =
+  BACKGROUND_THEMES.find((theme) => theme.id === selectedTheme) ||
+  BACKGROUND_THEMES[0];
 
   const adminStats = useMemo(() => {
     const sessionIds = new Set(adminRows.map((row) => row.sessionId).filter(Boolean));
@@ -1801,7 +1806,7 @@ export default function App() {
           <div className="gameHeader">
             <div>
               <div className="smallCaps">{mode} Mode</div>
-              <h1>Temple Maze</h1>
+              <h1>{activeTheme.color} {activeTheme.label} Maze</h1>
               <p>Game {game} of {totalGames} · Turn {turn} of {settings.maxTurns} · {difficulty}</p>
               <p className="timerLine">⏱️ Total: {totalElapsedSeconds}s · Current decision: {currentReactionSeconds}s</p>
               <p className="saveStatusLine">☁️ Online save: {onlineSaveStatus}</p>
